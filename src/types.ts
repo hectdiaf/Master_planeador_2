@@ -14,17 +14,32 @@ export interface LogEntry {
   auto?: boolean;
 }
 
+/** Producto / referencia dentro de un pedido. */
+export interface OrderProduct {
+  id: string;
+  name: string;
+  qty: number;
+}
+
+export type Channel =
+  | "Retail"
+  | "Open Market"
+  | "Ecommerce"
+  | "Tiendas propias"
+  | "SAC"
+  | "Otros";
+
 export interface Order {
   id: string;
   code: string;
+  /** Etiqueta derivada: nombres de productos unidos (para búsqueda/filtros). */
   product: string;
+  products: OrderProduct[];
   client: string;
-  channel: string;
-  subchannel: string;
-  category: string;
+  channel: Channel;
   color: ColorKey;
+  /** Derivado: suma de cantidades de los productos. */
   totalUnits: number;
-  progress: number; // 0..100 (avance general del pedido)
   requestDate: string; // ISO date
   deliveryDate: string; // ISO date
   archived?: boolean; // todas sus tarjetas despachadas: sale del backlog, sigue en calendario
@@ -56,7 +71,7 @@ export interface DayConfig {
 export interface Filters {
   client: string; // 'all' o nombre de cliente
   status: string; // 'all' o ChunkStatus
-  product: string; // 'all' o producto
+  product: string; // 'all' o nombre de producto
 }
 
 export type ColorKey =
@@ -117,21 +132,13 @@ export const BLOCK_REASONS = [
   "Otro",
 ] as const;
 
-export const CATEGORIES = [
-  "Premium",
-  "Gama Media",
-  "Gama Entrada",
-  "Outlet",
-  "Lote Corporativo",
-  "Lote Mayorista",
-];
-
-export const CHANNELS = [
-  "Marketplace",
+export const CHANNELS: Channel[] = [
   "Retail",
-  "Operador",
-  "Mayorista",
-  "Corporativo",
+  "Open Market",
+  "Ecommerce",
+  "Tiendas propias",
+  "SAC",
+  "Otros",
 ];
 
 export const TECH_RATE = 15; // teléfonos/día por técnico

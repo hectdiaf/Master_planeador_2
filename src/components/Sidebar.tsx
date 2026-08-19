@@ -12,7 +12,7 @@ import {
 import { useDraggable } from "@dnd-kit/core";
 import type { Chunk, DayConfig, Order } from "../types";
 import { ORDER_COLORS } from "../types";
-import { colDate, fmtNum, pctColor, todayISO } from "../lib";
+import { colDate, fmtNum, orderProgress, pctColor, todayISO } from "../lib";
 import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
 import { Ring, Stepper, inputCls } from "./ui";
 
@@ -21,6 +21,7 @@ export type Tab = "backlog" | "capacidad";
 function BacklogCard({
   o,
   sched,
+  qaUnits,
   api,
   notify,
   onEditOrder,
@@ -29,6 +30,7 @@ function BacklogCard({
 }: {
   o: Order;
   sched: number;
+  qaUnits: number;
   api: PlannerApi;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
   onEditOrder: (id: string) => void;
@@ -41,6 +43,7 @@ function BacklogCard({
   const [armed, setArmed] = useState(false);
   const accent = ORDER_COLORS[o.color];
   const remaining = Math.max(0, o.totalUnits - sched);
+  const progress = orderProgress(o.totalUnits, qaUnits);
 
   return (
     <div
@@ -66,7 +69,10 @@ function BacklogCard({
             {o.client} · {o.channel}
           </p>
         </div>
-        <Ring value={o.progress} size={34} color={accent} />
+        <div className="flex flex-col items-center gap-[2px]" title={`Avance = unidades en QA ÷ totales (${fmtNum(qaUnits)}/${fmtNum(o.totalUnits)})`}>
+          <Ring value={progress} size={34} color={accent} />
+          <span className="font-mono text-[8px] uppercase tracking-wider text-faint">QA</span>
+        </div>
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
@@ -88,32 +94,13 @@ function BacklogCard({
       {!o.archived && (
         <>
           <div className="mt-2 grid grid-cols-2 gap-x-2.5 gap-y-1.5 border-t border-line/70 pt-2">
-            <div>
-              <span className="mb-0.5 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
-                Unidades totales
+            <div className="col-span-2 flex items-center justify-between rounded-md bg-raise/70 px-2 py-1">
+              <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
+                Avance (uds en QA)
               </span>
-              <Stepper
-                value={o.totalUnits}
-                onChange={(v) => api.updateOrder(o.id, { totalUnits: v }, `Unidades totales ajustadas a ${v}.`)}
-                min={Math.max(1, sched)}
-                max={9999}
-                step={10}
-              />
-            </div>
-            <div>
-              <span className="mb-0.5 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
-                Avance %
+              <span className="font-mono text-[10.5px] font-bold tabular text-accent">
+                {progress}% · {fmtNum(qaUnits)}/{fmtNum(o.totalUnits)}
               </span>
-              <div className="flex items-center gap-1.5 pt-1">
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={o.progress}
-                  onChange={(e) => api.updateOrder(o.id, { progress: Number(e.target.value) }, `Avance actualizado a ${e.target.value}%.`)}
-                  className="w-full"
-                />
-              </div>
             </div>
             <div>
               <span className="mb-0.5 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
@@ -266,6 +253,12 @@ export function Sidebar({
     return m;
   }, [chunks]);
 
+  const qaByOrder = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of chunks) if (c.status === "qa") m[c.orderId] = (m[c.orderId] ?? 0) + c.units;
+    return m;
+  }, [chunks]);
+
   const active = orders.filter((o) => !o.archived);
   const finalized = orders.filter((o) => o.archived);
   const sorted = useMemo(() => {
@@ -346,6 +339,7 @@ export function Sidebar({
                 key={o.id}
                 o={o}
                 sched={scheduled[o.id] ?? 0}
+                qaUnits={qaByOrder[o.id] ?? 0}
                 api={api}
                 notify={notify}
                 onEditOrder={onEditOrder}

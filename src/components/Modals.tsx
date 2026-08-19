@@ -1,15 +1,7 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
-import type { Chunk, ColorKey, Order } from "../types";
-import {
-  BLOCK_REASONS,
-  CATEGORIES,
-  CHANNELS,
-  COLOR_KEYS,
-  ORDER_COLORS,
-  STATUS_META,
-  clamp,
-} from "../types";
+import { AlertTriangle, PackagePlus, Plus, Trash2 } from "lucide-react";
+import type { Chunk, Order } from "../types";
+import { BLOCK_REASONS, CHANNELS, clamp } from "../types";
 import {
   businessDaysFrom,
   colDate,
@@ -21,7 +13,12 @@ import {
 import type { OrderInput } from "../store";
 import { Modal, Stepper, btnDanger, btnGhost, btnPrimary, inputCls, labelCls } from "./ui";
 
-/* ── Nuevo pedido / edición ─────────────────────────────────────── */
+interface ProductRow {
+  name: string;
+  qty: number;
+}
+
+/* ── Nuevo pedido / edición (multi-producto) ────────────────────── */
 
 export function OrderFormModal({
   order,
@@ -38,47 +35,46 @@ export function OrderFormModal({
   onConfirm: (input: OrderInput) => void;
   onDelete?: () => void;
 }) {
-  const [product, setProduct] = useState(order?.product ?? "");
   const [client, setClient] = useState(order?.client ?? "");
   const [channel, setChannel] = useState(order?.channel ?? CHANNELS[0]);
-  const [subchannel, setSubchannel] = useState(order?.subchannel ?? "");
-  const [category, setCategory] = useState(order?.category ?? CATEGORIES[0]);
-  const [color, setColor] = useState<ColorKey>(order?.color ?? "teal");
-  const [totalUnits, setTotalUnits] = useState(order?.totalUnits ?? 100);
   const [requestDate, setRequestDate] = useState(order?.requestDate ?? ensureBiz(todayISO()));
   const [deliveryDate, setDeliveryDate] = useState(order?.deliveryDate ?? ensureBiz(todayISO()));
+  const [products, setProducts] = useState<ProductRow[]>(
+    order && order.products.length > 0
+      ? order.products.map((p) => ({ name: p.name, qty: p.qty }))
+      : [{ name: "", qty: 10 }]
+  );
   const [touched, setTouched] = useState(false);
   const [armed, setArmed] = useState(false);
 
-  const valid =
-    product.trim().length > 0 &&
-    client.trim().length > 0 &&
-    totalUnits >= Math.max(1, scheduledUnits);
+  const total = products.reduce((a, p) => a + (p.qty > 0 ? p.qty : 0), 0);
+  const belowScheduled = total < Math.max(1, scheduledUnits);
+  const productsOk =
+    products.length > 0 && products.every((p) => p.name.trim().length > 0 && p.qty >= 1);
+  const valid = client.trim().length > 0 && productsOk && !belowScheduled;
+
+  const setName = (i: number, name: string) =>
+    setProducts((xs) => xs.map((x, k) => (k === i ? { ...x, name } : x)));
+  const setQty = (i: number, qty: number) =>
+    setProducts((xs) =>
+      xs.map((x, k) => (k === i ? { ...x, qty: clamp(Math.round(qty), 0, 99999) } : x))
+    );
+  const addRow = () => setProducts((xs) => [...xs, { name: "", qty: 10 }]);
+  const removeRow = (i: number) => setProducts((xs) => xs.filter((_, k) => k !== i));
 
   return (
     <Modal
       title={order ? `Editar ${order.code}` : "Nuevo pedido"}
-      subtitle={order ? undefined : `Se creará con el código ${nextCode} · entrará al backlog`}
+      subtitle={
+        order
+          ? "Las unidades totales se recalculan a partir de los productos"
+          : `Se creará con el código ${nextCode} · entrará al backlog`
+      }
       onClose={onClose}
-      width={470}
+      width={480}
     >
       <div className="flex flex-col gap-3.5">
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <span className={labelCls}>Producto *</span>
-            <input
-              value={product}
-              onChange={(e) => {
-                setProduct(e.target.value);
-                setTouched(true);
-              }}
-              placeholder="Ej. iPhone 12 64GB"
-              className={inputCls}
-            />
-            {touched && !product.trim() && (
-              <p className="mt-1 text-[10.5px] font-medium text-danger">Requerido.</p>
-            )}
-          </div>
           <div>
             <span className={labelCls}>Cliente *</span>
             <input
@@ -94,56 +90,19 @@ export function OrderFormModal({
               <p className="mt-1 text-[10.5px] font-medium text-danger">Requerido.</p>
             )}
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
           <div>
             <span className={labelCls}>Canal de venta</span>
-            <select value={channel} onChange={(e) => setChannel(e.target.value)} className={inputCls}>
+            <select
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as (typeof CHANNELS)[number])}
+              className={inputCls}
+            >
               {CHANNELS.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <span className={labelCls}>Subcanal</span>
-            <input
-              value={subchannel}
-              onChange={(e) => setSubchannel(e.target.value)}
-              placeholder="Ej. Postpago"
-              className={inputCls}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <span className={labelCls}>Tipo / categoría</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <span className={labelCls}>Unidades totales</span>
-            <Stepper
-              value={totalUnits}
-              onChange={setTotalUnits}
-              min={Math.max(1, scheduledUnits)}
-              max={9999}
-              step={10}
-              unit="uds"
-            />
-            {scheduledUnits > 0 && (
-              <p className="mt-1 text-[10px] text-faint">
-                Mínimo {scheduledUnits}: ya hay unidades en calendario.
-              </p>
-            )}
           </div>
         </div>
 
@@ -169,20 +128,75 @@ export function OrderFormModal({
         </div>
 
         <div>
-          <span className={labelCls}>Color del lote</span>
-          <div className="flex gap-1.5">
-            {COLOR_KEYS.map((k) => (
-              <button
-                key={k}
-                onClick={() => setColor(k)}
-                aria-label={`Color ${k}`}
-                className={`h-7 w-7 rounded-full border-2 transition active:scale-90 ${
-                  color === k ? "border-ink" : "border-transparent hover:scale-105"
-                }`}
-                style={{ background: ORDER_COLORS[k] }}
-              />
-            ))}
+          <div className="mb-1 flex items-center justify-between">
+            <span className={labelCls + " mb-0"}>Productos / referencias *</span>
+            <button
+              onClick={addRow}
+              className="flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-mut transition hover:border-accent/50 hover:text-accent active:scale-[0.97]"
+            >
+              <Plus size={11} />
+              Agregar producto
+            </button>
           </div>
+
+          <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-raise/50 p-2.5">
+            {products.map((p, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={p.name}
+                  onChange={(e) => {
+                    setName(i, e.target.value);
+                    setTouched(true);
+                  }}
+                  placeholder={`Producto ${String.fromCharCode(65 + i)} (ej. iPhone 12 64GB)`}
+                  className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2.5 py-1.5 text-[12.5px] outline-none transition focus:border-accent placeholder:text-faint"
+                />
+                <input
+                  type="number"
+                  value={p.qty}
+                  min={1}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isNaN(n)) setQty(i, n);
+                  }}
+                  className="w-20 shrink-0 rounded-md border border-line bg-panel px-2 py-1.5 text-center font-mono text-[12.5px] font-semibold tabular outline-none focus:border-accent"
+                />
+                <span className="shrink-0 text-[10.5px] text-faint">uds</span>
+                <button
+                  onClick={() => removeRow(i)}
+                  disabled={products.length <= 1}
+                  aria-label="Quitar producto"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-faint transition enabled:hover:bg-danger/12 enabled:hover:text-danger disabled:opacity-30"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+
+            <div className="mt-1 flex items-center justify-between border-t border-line pt-2">
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-mut">
+                <PackagePlus size={13} />
+                Unidades totales (calculadas)
+              </span>
+              <span className="rounded-md bg-accent/12 px-2.5 py-1 font-mono text-[14px] font-bold tabular text-accent">
+                {fmtNum(total)} uds
+              </span>
+            </div>
+          </div>
+
+          {touched && !productsOk && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-danger">
+              <AlertTriangle size={12} />
+              Cada producto necesita nombre y cantidad mínima de 1 ud.
+            </p>
+          )}
+          {belowScheduled && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-danger">
+              <AlertTriangle size={12} />
+              Hay {fmtNum(scheduledUnits)} uds ya asignadas al calendario — el total no
+              puede ser menor.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-1">
@@ -193,6 +207,7 @@ export function OrderFormModal({
               </button>
             ) : (
               <button onClick={() => setArmed(true)} className={btnDanger}>
+                <Trash2 size={13} />
                 Eliminar
               </button>
             )
@@ -208,15 +223,11 @@ export function OrderFormModal({
                 valid &&
                 onConfirm({
                   code: order?.code ?? nextCode,
-                  product: product.trim(),
                   client: client.trim(),
                   channel,
-                  subchannel: subchannel.trim(),
-                  category,
-                  color,
-                  totalUnits,
                   requestDate,
                   deliveryDate,
+                  products: products.map((p) => ({ name: p.name.trim(), qty: p.qty })),
                 })
               }
               disabled={!valid}
@@ -439,30 +450,35 @@ export function AssignModal({
   onClose: () => void;
   onConfirm: (orderId: string, units: number) => void;
 }) {
-  const remaining = (o: Order) =>
-    Math.max(0, o.totalUnits - chunks.filter((c) => c.orderId === o.id).reduce((a, c) => a + c.units, 0));
+  const remaining = (orderId: string) => {
+    const o = orders.find((x) => x.id === orderId);
+    if (!o) return 0;
+    const used = chunks.filter((c) => c.orderId === orderId).reduce((a, c) => a + c.units, 0);
+    return Math.max(0, o.totalUnits - used);
+  };
 
   const candidates = useMemo(
-    () => orders.filter((o) => !o.archived && remaining(o) > 0),
+    () => orders.filter((o) => remaining(o.id) > 0 && !o.archived),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [orders, chunks]
   );
 
-  const initial =
+  const initialId =
     presetOrderId && candidates.some((o) => o.id === presetOrderId)
       ? presetOrderId
       : (candidates[0]?.id ?? "");
-  const [orderId, setOrderId] = useState(initial);
-  const sel = candidates.find((o) => o.id === orderId);
-  const rem = sel ? remaining(sel) : 0;
-  const [units, setUnits] = useState(Math.max(1, rem));
-  const valid = !!sel && units >= 1 && units <= rem;
+  const [orderId, setOrderId] = useState(initialId);
+  const [units, setUnits] = useState(() => Math.max(1, remaining(initialId)));
+
   const c = colDate(date);
+  const sel = candidates.find((o) => o.id === orderId);
+  const rem = sel ? remaining(sel.id) : 0;
+  const ok = !!sel && units >= 1 && units <= rem;
 
   return (
     <Modal
       title="Asignar unidades"
-      subtitle={`${c.dowLong} ${c.dnum} ${c.mon} · entrarán al plan del día`}
+      subtitle={`${c.dowLong} ${c.dnum} ${c.mon} · la tarjeta entrará en Primera Revisión`}
       onClose={onClose}
       width={430}
     >
@@ -478,36 +494,35 @@ export function AssignModal({
               value={orderId}
               onChange={(e) => {
                 setOrderId(e.target.value);
-                const o = candidates.find((x) => x.id === e.target.value);
-                if (o) setUnits(remaining(o));
+                setUnits(Math.max(1, remaining(e.target.value)));
               }}
               className={inputCls}
             >
               {candidates.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.code} · {o.client} — {o.product} ({remaining(o)} pend.)
+                  {o.code} · {o.client} — {o.product} ({remaining(o.id)} pend.)
                 </option>
               ))}
             </select>
           </div>
-          {sel && (
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <span className={labelCls}>Unidades a asignar</span>
-                <Stepper value={units} onChange={setUnits} min={1} max={rem} step={5} unit="uds" />
-              </div>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <span className={labelCls}>Unidades a asignar</span>
+              <Stepper value={units} onChange={setUnits} min={1} max={Math.max(1, rem)} step={5} unit="uds" />
+            </div>
+            {sel && (
               <span className="pb-1 font-mono text-[11px] tabular text-mut">
                 disponibles: {fmtNum(rem)} / {fmtNum(sel.totalUnits)}
               </span>
-            </div>
-          )}
+            )}
+          </div>
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className={btnGhost}>
               Cancelar
             </button>
             <button
-              onClick={() => valid && onConfirm(orderId, units)}
-              disabled={!valid}
+              onClick={() => ok && onConfirm(orderId, units)}
+              disabled={!ok}
               className={btnPrimary + " disabled:opacity-40"}
             >
               Asignar al {fmtMedium(date)}
@@ -556,10 +571,4 @@ export function ConfirmModal({
       </div>
     </Modal>
   );
-}
-
-export function despachoBody(order: Order): string {
-  return `¿Estás seguro de que ya finalizó el pedido ${order.code} (${order.product} · ${fmtNum(
-    order.totalUnits
-  )} uds)? El pedido desaparecerá del listado del backlog, pero permanecerá visible en el calendario como ${STATUS_META.despacho.label}.`;
 }

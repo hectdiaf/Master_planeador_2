@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -153,13 +153,39 @@ function CardPill({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chunk:${chunk.id}`,
   });
+  const pillRef = useRef<HTMLDivElement>(null);
+  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
   const accent = ORDER_COLORS[order.color];
   const blocked = chunk.status === "bloqueado";
   const done = chunk.status === "despacho";
 
+  // Popover en capa fija (por encima de todas las tarjetas/columnas, sin recortes).
+  const togglePop = () => {
+    if (popOpen) {
+      setPopPos(null);
+      onTogglePop();
+      return;
+    }
+    const r = pillRef.current?.getBoundingClientRect();
+    if (r) {
+      const W = 256;
+      const H = 348;
+      const left = Math.min(Math.max(8, r.right - W), window.innerWidth - W - 8);
+      const top =
+        r.bottom + H + 12 > window.innerHeight
+          ? Math.max(8, r.top - H - 8)
+          : r.bottom + 6;
+      setPopPos({ top, left });
+    }
+    onTogglePop();
+  };
+
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        (pillRef as { current: HTMLDivElement | null }).current = node;
+      }}
       {...attributes}
       {...listeners}
       onClick={onClick}
@@ -173,12 +199,12 @@ function CardPill({
           className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.14em]"
           style={{ color: accent }}
         >
-          {order.category}
+          {order.code}
         </span>
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onTogglePop();
+            togglePop();
           }}
           onPointerDown={(e) => e.stopPropagation()}
           title="Edición rápida"
@@ -214,9 +240,16 @@ function CardPill({
 
       {popOpen && (
         <>
-          <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); onTogglePop(); }} />
           <div
-            className="absolute right-0 top-[calc(100%+4px)] z-30 w-60 rounded-xl border border-line bg-panel p-3 text-left shadow-pop animate-pop"
+            className="fixed inset-0 z-[65]"
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePop();
+            }}
+          />
+          <div
+            className="fixed z-[70] w-64 rounded-xl border border-line bg-panel p-3 text-left shadow-pop animate-pop"
+            style={{ top: popPos?.top ?? 0, left: popPos?.left ?? 0 }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -267,7 +300,7 @@ function CardPill({
             <div className="mt-2.5 grid grid-cols-2 gap-1.5">
               <button
                 onClick={() => {
-                  onTogglePop();
+                  togglePop();
                   onSplit();
                 }}
                 className="flex items-center justify-center gap-1 rounded-md border border-line px-2 py-1.5 text-[11px] font-semibold text-mut transition hover:border-accent/50 hover:text-accent"
@@ -277,7 +310,7 @@ function CardPill({
               </button>
               <button
                 onClick={() => {
-                  onTogglePop();
+                  togglePop();
                   onRemoveChunk();
                 }}
                 className="flex items-center justify-center gap-1 rounded-md border border-line px-2 py-1.5 text-[11px] font-semibold text-mut transition hover:border-danger/50 hover:text-danger"

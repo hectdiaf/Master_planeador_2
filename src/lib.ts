@@ -1,3 +1,5 @@
+import type { Chunk } from "./types";
+
 export const WEEKDAYS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 export const WEEKDAYS_LONG = [
   "domingo",
@@ -139,4 +141,16 @@ export function pctColor(p: number): "ok" | "warn" | "danger" {
   if (p > 100) return "danger";
   if (p >= 85) return "warn";
   return "ok";
+}
+
+/* ── avance del pedido: se deriva de las tarjetas en QA ── */
+
+export function orderQaUnits(chunks: Chunk[]): number {
+  return chunks.reduce((a, c) => (c.status === "qa" ? a + c.units : a), 0);
+}
+
+/** Avance general (%) = unidades en QA ÷ unidades totales × 100. */
+export function orderProgress(totalUnits: number, qaUnits: number): number {
+  if (totalUnits <= 0) return 0;
+  return Math.min(100, Math.round((qaUnits / totalUnits) * 100));
 }

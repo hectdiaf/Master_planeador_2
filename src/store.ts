@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  Channel,
   Chunk,
   ChunkStatus,
-  ColorKey,
   DayConfig,
   LogEntry,
   Order,
+  OrderProduct,
 } from "./types";
-import { QA_RATE, STATUS_META, TECH_RATE, clamp, uid } from "./types";
+import { COLOR_KEYS, QA_RATE, STATUS_META, TECH_RATE, clamp, uid } from "./types";
 import { fmtMedium } from "./lib";
 import { makeSeed } from "./data";
 
@@ -44,19 +45,35 @@ export function capacityOf(cfg: DayConfig): Capacity {
 
 export interface OrderInput {
   code: string;
-  product: string;
   client: string;
-  channel: string;
-  subchannel: string;
-  category: string;
-  color: ColorKey;
-  totalUnits: number;
+  channel: Channel;
   requestDate: string;
   deliveryDate: string;
+  /** Líneas de producto; totalUnits y la etiqueta se derivan de ellas. */
+  products: { name: string; qty: number }[];
 }
 
+export interface OrderPatch
+  extends Partial<Omit<Order, "products" | "product" | "totalUnits">> {
+  products?: { name: string; qty: number }[];
+}
+
+const deriveFromProducts = (
+  o: Order,
+  products?: { name: string; qty: number }[]
+): Order => {
+  if (!products) return o;
+  const items: OrderProduct[] = products.map((p) => ({ id: uid(), ...p }));
+  return {
+    ...o,
+    products: items,
+    totalUnits: items.reduce((a, p) => a + p.qty, 0),
+    product: items.map((p) => p.name).join(" + "),
+  };
+};
+
 export interface PlannerApi {
-  updateOrder(id: string, patch: Partial<Order>, logText?: string): void;
+  updateOrder(id: string, patch: OrderPatch, logText?: string): void;
   addNote(id: string, text: string): void;
   removeOrder(id: string): void;
   createOrder(input: OrderInput): void;
@@ -72,7 +89,7 @@ export interface PlannerApi {
   setDayConfig(date: string, patch: Partial<DayConfig>): void;
 }
 
-const STORAGE_KEY = "po-planner-v3";
+const STORAGE_KEY = "po-planner-v4";
 
 function loadState(): PlannerState {
   try {
@@ -144,9 +161,13 @@ export function usePlanner(): PlannerState & { api: PlannerApi } {
     return {
       updateOrder(id, patch, logText) {
         setState((s) =>
-          patchOrder(s, id, (o) =>
-            withLog({ ...o, ...patch }, logText ?? "Información del pedido actualizada.")
-          )
+          patchOrder(s, id, (o) => {
+            const { products, ...rest } = patch;
+            return withLog(
+              deriveFromProducts({ ...o, ...rest }, products),
+              logText ?? "Información del pedido actualizada."
+            );
+          })
         );
       },
 
@@ -170,16 +191,26 @@ export function usePlanner(): PlannerState & { api: PlannerApi } {
       },
 
       createOrder(input) {
-        const nowIso = new Date().toISOString();
-        const order: Order = {
-          id: uid(),
-          ...input,
-          progress: 0,
-          logs: [{ id: uid(), text: "Pedido creado manualmente.", at: nowIso, auto: true }],
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        };
-        setState((s) => ({ ...s, orders: [order, ...s.orders] }));
+        setState((s) => {
+          const nowIso = new Date().toISOString();
+          const items: OrderProduct[] = input.products.map((p) => ({ id: uid(), ...p }));
+          const order: Order = {
+            id: uid(),
+            code: input.code,
+            client: input.client,
+            channel: input.channel,
+            requestDate: input.requestDate,
+            deliveryDate: input.deliveryDate,
+            products: items,
+            product: items.map((p) => p.name).join(" + "),
+            totalUnits: items.reduce((a, p) => a + p.qty, 0),
+            color: COLOR_KEYS[s.orders.length % COLOR_KEYS.length],
+            logs: [{ id: uid(), text: "Pedido creado manualmente.", at: nowIso, auto: true }],
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          };
+          return { ...s, orders: [order, ...s.orders] };
+        });
       },
 
       assign(orderId, date, units) {
@@ -285,7 +316,7 @@ export function usePlanner(): PlannerState & { api: PlannerApi } {
           const allDone = siblings.every((x) => x.status === "despacho");
           return patchOrder(next, c.orderId, (o) =>
             withLog(
-              allDone ? { ...o, archived: true, progress: 100 } : o,
+              allDone ? { ...o, archived: true } : o,
               allDone
                 ? `Tarjeta del ${fmtMedium(c.date)} despachada (${c.units} uds). Pedido finalizado — sale del backlog.`
                 : `Tarjeta del ${fmtMedium(c.date)} despachada (${c.units} uds).`

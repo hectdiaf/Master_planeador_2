@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, CalendarDays, Pencil, Send, Unlock, X } from "lucide-react";
 import type { Chunk, ChunkStatus, Order } from "../types";
 import { ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
-import { fmtDateTime, fmtMedium, fmtNum } from "../lib";
+import { fmtDateTime, fmtMedium, fmtNum, orderProgress, orderQaUnits } from "../lib";
 import type { PlannerApi } from "../store";
 import { Badge } from "./ui";
 
@@ -36,6 +36,8 @@ export function Drawer({
   const accent = ORDER_COLORS[order.color];
   const assigned = chunks.reduce((a, c) => a + c.units, 0);
   const blockedChunks = chunks.filter((c) => c.status === "bloqueado");
+  const qaUnits = orderQaUnits(chunks);
+  const progress = orderProgress(order.totalUnits, qaUnits);
 
   const byStatus = (s: ChunkStatus) =>
     chunks.filter((c) => c.status === s).reduce((a, c) => a + c.units, 0);
@@ -66,7 +68,7 @@ export function Drawer({
           </div>
           <p className="truncate text-[13.5px] font-semibold">{order.product}</p>
           <p className="mt-0.5 truncate text-[11px] text-mut">
-            {order.client} · {order.channel} · {order.category}
+            {order.client} · {order.channel}
           </p>
         </div>
         <button
@@ -123,13 +125,28 @@ export function Drawer({
           <div className="mt-1 divide-y divide-line/70 rounded-lg border border-line bg-raise/50 px-3">
             <Detail k="Cliente" v={order.client} />
             <Detail k="Canal" v={order.channel} />
-            <Detail k="Subcanal" v={order.subchannel || "—"} />
             <Detail k="F. solicitud" v={fmtMedium(order.requestDate)} />
             <Detail k="F. entrega tent." v={fmtMedium(order.deliveryDate)} />
             <Detail
               k="Unidades"
               v={`${fmtNum(assigned)} agendadas / ${fmtNum(order.totalUnits)} totales`}
             />
+          </div>
+
+          <div className="mt-2 rounded-lg border border-line bg-raise/50 px-3 py-2">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+              Productos ({order.products.length})
+            </span>
+            <div className="mt-1 flex flex-col gap-1">
+              {order.products.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[12px] font-medium">{p.name}</span>
+                  <span className="shrink-0 font-mono text-[11px] font-semibold tabular text-mut">
+                    {fmtNum(p.qty)} uds
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -169,7 +186,7 @@ export function Drawer({
           </div>
         </section>
 
-        {/* avance general */}
+        {/* avance general (calculado) */}
         <section className="px-4 pt-3">
           <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
             Resumen de avance
@@ -177,32 +194,22 @@ export function Drawer({
           <div className="mt-1.5 rounded-lg border border-line bg-raise/50 p-3">
             <div className="flex items-baseline justify-between">
               <span className="font-display text-[26px] font-bold leading-none tabular text-accent">
-                {Math.round(order.progress)}%
+                {progress}%
               </span>
-              <span className="font-mono text-[10.5px] tabular text-mut">completado</span>
+              <span className="font-mono text-[10.5px] tabular text-mut">
+                {fmtNum(qaUnits)} uds en QA / {fmtNum(order.totalUnits)}
+              </span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-paper">
               <div
                 className="h-full rounded-full bg-accent transition-all duration-500"
-                style={{ width: `${order.progress}%` }}
+                style={{ width: `${progress}%` }}
               />
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">
-                Ajuste rápido
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={order.progress}
-                disabled={order.archived}
-                onChange={(e) =>
-                  api.updateOrder(order.id, { progress: Number(e.target.value) }, `Avance actualizado a ${e.target.value}%.`)
-                }
-                className="w-full disabled:opacity-40"
-              />
-            </div>
+            <p className="mt-1.5 text-[10px] leading-snug text-faint">
+              Cálculo automático: (unidades en QA ÷ unidades totales) × 100 — se
+              actualiza al cambiar el estado de las tarjetas.
+            </p>
           </div>
         </section>
 

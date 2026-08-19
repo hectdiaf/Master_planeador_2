@@ -88,7 +88,8 @@ export default function App() {
       orders.filter((o) => {
         if (filters.client !== "all" && o.client !== filters.client) return false;
         if (filters.status !== "all" && !statusOrderIds.has(o.id)) return false;
-        if (filters.product !== "all" && o.product !== filters.product) return false;
+        if (filters.product !== "all" && !o.products.some((p) => p.name === filters.product))
+          return false;
         return true;
       }),
     [orders, filters, statusOrderIds]

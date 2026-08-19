@@ -62,7 +62,7 @@ export function Navbar({
     if (!q) return [];
     return orders
       .filter((o) =>
-        [o.code, o.product, o.client, o.channel, o.category]
+        [o.code, o.product, o.client, o.channel]
           .join(" ")
           .toLowerCase()
           .includes(q)

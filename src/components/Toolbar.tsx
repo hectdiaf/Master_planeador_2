@@ -71,7 +71,9 @@ export function Toolbar({
   onNewOrder: () => void;
 }) {
   const clients = [...new Set(orders.map((o) => o.client))].sort();
-  const products = [...new Set(orders.map((o) => o.product))].sort();
+  const products = [
+    ...new Set(orders.flatMap((o) => o.products.map((p) => p.name))),
+  ].sort();
   const counts = clients.map((c) => ({
     client: c,
     n: orders.filter((o) => o.client === c).length,
