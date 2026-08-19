@@ -345,21 +345,23 @@ export function SplitModal({
   );
 }
 
-/* ── Bloqueo de pedido (motivo obligatorio) ─────────────────────── */
+/* ── Bloqueo de tarjeta (motivo obligatorio) ────────────────────── */
 
 export function BlockModal({
-  order,
+  chunk,
+  orderCode,
   onClose,
   onConfirm,
 }: {
-  order: Order;
+  chunk: Chunk;
+  orderCode: string;
   onClose: () => void;
   onConfirm: (reason: string) => void;
 }) {
-  const [preset, setPreset] = useState<string>(order.blockReason ?? "");
+  const [preset, setPreset] = useState<string>(chunk.blockReason ?? "");
   const [detail, setDetail] = useState(
-    order.blockReason && !(BLOCK_REASONS as readonly string[]).includes(order.blockReason)
-      ? order.blockReason
+    chunk.blockReason && !(BLOCK_REASONS as readonly string[]).includes(chunk.blockReason)
+      ? chunk.blockReason
       : ""
   );
   const reason = preset === "Otro" ? detail.trim() : preset;
@@ -367,8 +369,8 @@ export function BlockModal({
 
   return (
     <Modal
-      title="Bloquear pedido"
-      subtitle={`${order.code} · ${order.product} — el motivo es obligatorio`}
+      title="Bloquear tarjeta"
+      subtitle={`${orderCode} · ${chunk.units} uds del ${fmtMedium(chunk.date)} — el motivo es obligatorio`}
       onClose={onClose}
       width={420}
     >
@@ -412,7 +414,7 @@ export function BlockModal({
             disabled={!ok}
             className="inline-flex items-center justify-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-[12.5px] font-semibold text-white transition enabled:hover:brightness-110 enabled:active:scale-[0.98] disabled:opacity-40"
           >
-            Bloquear pedido
+            Bloquear tarjeta
           </button>
         </div>
       </div>

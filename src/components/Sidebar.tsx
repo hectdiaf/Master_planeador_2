@@ -10,11 +10,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
-import type { Chunk, DayConfig, Order, OrderStatus } from "../types";
-import { FLOW_LABELS, ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
+import type { Chunk, DayConfig, Order } from "../types";
+import { ORDER_COLORS } from "../types";
 import { colDate, fmtNum, pctColor, todayISO } from "../lib";
 import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
-import { Badge, Ring, Stepper, inputCls } from "./ui";
+import { Ring, Stepper, inputCls } from "./ui";
 
 export type Tab = "backlog" | "capacidad";
 
@@ -24,8 +24,6 @@ function BacklogCard({
   api,
   notify,
   onEditOrder,
-  onBlock,
-  onDespacho,
   onAssign,
   firstDay,
 }: {
@@ -34,8 +32,6 @@ function BacklogCard({
   api: PlannerApi;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
   onEditOrder: (id: string) => void;
-  onBlock: (id: string) => void;
-  onDespacho: (id: string) => void;
   onAssign: (orderId: string, date: string) => void;
   firstDay: string;
 }) {
@@ -45,7 +41,6 @@ function BacklogCard({
   const [armed, setArmed] = useState(false);
   const accent = ORDER_COLORS[o.color];
   const remaining = Math.max(0, o.totalUnits - sched);
-  const blocked = o.status === "bloqueado";
 
   return (
     <div
@@ -65,10 +60,7 @@ function BacklogCard({
           <GripVertical size={14} />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono text-[10px] font-bold text-mut">{o.code}</span>
-            <Badge status={o.status} size="sm" />
-          </div>
+          <span className="font-mono text-[10px] font-bold text-mut">{o.code}</span>
           <p className="truncate text-[12.5px] font-bold leading-tight">{o.product}</p>
           <p className="truncate text-[11px] text-mut">
             {o.client} · {o.channel}
@@ -145,31 +137,11 @@ function BacklogCard({
                 className={inputCls + " !py-1 !text-[11.5px]"}
               />
             </div>
-            <div className="col-span-2">
-              <span className="mb-0.5 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
-                Estado del pedido
-              </span>
-              <select
-                value={o.status}
-                onChange={(e) => {
-                  const v = e.target.value as OrderStatus;
-                  if (v === "bloqueado") onBlock(o.id);
-                  else if (v === "despacho") onDespacho(o.id);
-                  else {
-                    api.setStatus(o.id, v);
-                    notify(`Estado → ${STATUS_META[v].label}`);
-                  }
-                }}
-                className={inputCls + " !py-1 !text-[11.5px]"}
-              >
-                {([...STATUS_FLOW, "bloqueado"] as OrderStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {FLOW_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
+          <p className="mt-1.5 rounded-md bg-raise/70 px-2 py-1 text-[10px] leading-snug text-faint">
+            El estado se gestiona por tarjeta: cada asignación del calendario avanza
+            en su propio proceso.
+          </p>
 
           <div className="mt-2 flex items-center gap-1.5">
             {remaining > 0 && (
@@ -188,26 +160,6 @@ function BacklogCard({
             >
               <Pencil size={12} />
             </button>
-            {blocked ? (
-              <button
-                onClick={() => {
-                  api.unblockOrder(o.id);
-                  notify("Bloqueo liberado.", "ok");
-                }}
-                title="Liberar bloqueo"
-                className="grid h-6 w-6 place-items-center rounded-md text-ok transition hover:bg-ok/12"
-              >
-                <UnlockIcon />
-              </button>
-            ) : (
-              <button
-                onClick={() => onBlock(o.id)}
-                title="Bloquear pedido"
-                className="grid h-6 w-6 place-items-center rounded-md text-faint transition hover:bg-danger/12 hover:text-danger"
-              >
-                <BanIcon />
-              </button>
-            )}
             {armed ? (
               <button
                 onClick={() => {
@@ -232,24 +184,6 @@ function BacklogCard({
         </>
       )}
     </div>
-  );
-}
-
-function UnlockIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-    </svg>
-  );
-}
-
-function BanIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <path d="m4.9 4.9 14.2 14.2" />
-    </svg>
   );
 }
 
@@ -296,8 +230,6 @@ export function Sidebar({
   dates,
   onEditOrder,
   onNewOrder,
-  onBlock,
-  onDespacho,
   onAssign,
 }: {
   tab: Tab;
@@ -312,8 +244,6 @@ export function Sidebar({
   dates: string[];
   onEditOrder: (id: string) => void;
   onNewOrder: () => void;
-  onBlock: (id: string) => void;
-  onDespacho: (id: string) => void;
   onAssign: (orderId: string, date: string) => void;
 }) {
   const [showFinalized, setShowFinalized] = useState(false);
@@ -419,8 +349,6 @@ export function Sidebar({
                 api={api}
                 notify={notify}
                 onEditOrder={onEditOrder}
-                onBlock={onBlock}
-                onDespacho={onDespacho}
                 onAssign={onAssign}
                 firstDay={dates[0]}
               />

@@ -10,13 +10,8 @@ import {
   Unlock,
 } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import type { Chunk, DayConfig, Order, OrderStatus } from "../types";
-import {
-  FLOW_LABELS,
-  ORDER_COLORS,
-  STATUS_FLOW,
-  STATUS_META,
-} from "../types";
+import type { Chunk, ChunkStatus, DayConfig, Order } from "../types";
+import { FLOW_LABELS, ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
 import { colDate, fmtNum, pctColor } from "../lib";
 import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
 import { Badge, Stepper } from "./ui";
@@ -138,8 +133,8 @@ function CardPill({
   onClick,
   api,
   onSplit,
-  onBlockOrder,
-  onDespacho,
+  onBlockChunk,
+  onDespachoChunk,
   onRemoveChunk,
   notify,
 }: {
@@ -150,8 +145,8 @@ function CardPill({
   onClick: () => void;
   api: PlannerApi;
   onSplit: () => void;
-  onBlockOrder: () => void;
-  onDespacho: () => void;
+  onBlockChunk: () => void;
+  onDespachoChunk: () => void;
   onRemoveChunk: () => void;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
 }) {
@@ -159,7 +154,8 @@ function CardPill({
     id: `chunk:${chunk.id}`,
   });
   const accent = ORDER_COLORS[order.color];
-  const blocked = order.status === "bloqueado";
+  const blocked = chunk.status === "bloqueado";
+  const done = chunk.status === "despacho";
 
   return (
     <div
@@ -169,7 +165,7 @@ function CardPill({
       onClick={onClick}
       className={`group relative cursor-grab rounded-lg border border-line bg-panel p-2 shadow-card transition hover:-translate-y-[1px] hover:border-line2 hover:shadow-pop active:cursor-grabbing animate-fade-up ${
         isDragging ? "opacity-40" : ""
-      } ${order.archived ? "opacity-75" : ""}`}
+      } ${done ? "opacity-80" : ""}`}
       style={{ borderLeft: `3px solid ${accent}` }}
     >
       <div className="flex items-start justify-between gap-1">
@@ -202,15 +198,15 @@ function CardPill({
           {fmtNum(chunk.units)}{" "}
           <span className="font-medium text-faint">/ {fmtNum(order.totalUnits)} uds</span>
         </span>
-        <Badge status={order.status} size="sm" />
+        <Badge status={chunk.status} size="sm" />
       </div>
 
       {blocked && (
-        <p className="mt-1 truncate text-[9.5px] font-semibold text-danger" title={order.blockReason}>
-          ⚠ Bloqueado por: {order.blockReason}
+        <p className="mt-1 truncate text-[9.5px] font-semibold text-danger" title={chunk.blockReason}>
+          ⚠ Bloqueado por: {chunk.blockReason}
         </p>
       )}
-      {order.archived && (
+      {done && (
         <p className="mt-1 flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider text-ok">
           <Check size={10} /> Finalizado
         </p>
@@ -226,7 +222,7 @@ function CardPill({
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10.5px] font-bold text-mut">{order.code}</span>
-              <Badge status={order.status} size="sm" />
+              <Badge status={chunk.status} size="sm" />
             </div>
 
             <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">
@@ -242,26 +238,26 @@ function CardPill({
             />
 
             <span className="mb-1 mt-2.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">
-              Estado del pedido
+              Estado de esta tarjeta
             </span>
             <select
-              value={order.status}
+              value={chunk.status}
               onChange={(e) => {
-                const v = e.target.value as OrderStatus;
+                const v = e.target.value as ChunkStatus;
                 if (v === "bloqueado") {
                   onTogglePop();
-                  onBlockOrder();
+                  onBlockChunk();
                 } else if (v === "despacho") {
                   onTogglePop();
-                  onDespacho();
+                  onDespachoChunk();
                 } else {
-                  api.setStatus(order.id, v);
-                  notify(`Estado → ${STATUS_META[v].label}`);
+                  api.setChunkStatus(chunk.id, v);
+                  notify(`Tarjeta → ${STATUS_META[v].label}`);
                 }
               }}
               className="w-full rounded-md border border-line bg-panel px-2 py-1.5 text-[12px] outline-none focus:border-accent"
             >
-              {[...STATUS_FLOW, "bloqueado" as OrderStatus].map((s) => (
+              {[...STATUS_FLOW, "bloqueado" as ChunkStatus].map((s) => (
                 <option key={s} value={s}>
                   {FLOW_LABELS[s]}
                 </option>
@@ -293,7 +289,7 @@ function CardPill({
             {blocked ? (
               <button
                 onClick={() => {
-                  api.unblockOrder(order.id);
+                  api.unblockChunk(chunk.id);
                   notify("Bloqueo liberado.", "ok");
                   onTogglePop();
                 }}
@@ -306,12 +302,12 @@ function CardPill({
               <button
                 onClick={() => {
                   onTogglePop();
-                  onBlockOrder();
+                  onBlockChunk();
                 }}
                 className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] font-semibold text-danger transition hover:bg-danger/20"
               >
                 <Ban size={11} />
-                Bloquear pedido
+                Bloquear tarjeta
               </button>
             )}
           </div>
@@ -332,8 +328,8 @@ export function Board({
   notify,
   onCardClick,
   onSplit,
-  onBlockOrder,
-  onDespacho,
+  onBlockChunk,
+  onDespachoChunk,
   onRemoveChunk,
   onGear,
   onAssignOrder,
@@ -348,8 +344,8 @@ export function Board({
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
   onCardClick: (orderId: string) => void;
   onSplit: (chunkId: string) => void;
-  onBlockOrder: (orderId: string) => void;
-  onDespacho: (orderId: string) => void;
+  onBlockChunk: (chunkId: string) => void;
+  onDespachoChunk: (chunkId: string) => void;
   onRemoveChunk: (chunkId: string) => void;
   onGear: (date: string) => void;
   onAssignOrder: (orderId: string, date: string) => void;
@@ -400,8 +396,8 @@ export function Board({
                       onClick={() => onCardClick(order.id)}
                       api={api}
                       onSplit={() => onSplit(c.id)}
-                      onBlockOrder={() => onBlockOrder(order.id)}
-                      onDespacho={() => onDespacho(order.id)}
+                      onBlockChunk={() => onBlockChunk(c.id)}
+                      onDespachoChunk={() => onDespachoChunk(c.id)}
                       onRemoveChunk={() => onRemoveChunk(c.id)}
                       notify={notify}
                     />

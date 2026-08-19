@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import type { Chunk, Filters, Order } from "./types";
 import { uid } from "./types";
-import { buildWindow, fmtRange, nextBiz, prevBiz, todayISO } from "./lib";
+import { buildWindow, fmtMedium, fmtNum, fmtRange, nextBiz, prevBiz, todayISO } from "./lib";
 import { loadTheme, saveTheme, usePlanner, type OrderInput } from "./store";
 import { Navbar } from "./components/Navbar";
 import { Toolbar } from "./components/Toolbar";
@@ -23,14 +23,13 @@ import {
   ConfirmModal,
   OrderFormModal,
   SplitModal,
-  despachoBody,
 } from "./components/Modals";
 import { Toasts, type Toast } from "./components/ui";
 
 type ModalState =
   | { type: "split"; chunkId: string }
-  | { type: "block"; orderId: string }
-  | { type: "despacho"; orderId: string }
+  | { type: "block"; chunkId: string }
+  | { type: "despacho"; chunkId: string }
   | { type: "assign"; orderId?: string; date: string }
   | { type: "order"; orderId: string | null }
   | null;
@@ -74,19 +73,32 @@ export default function App() {
     return m;
   }, [orders]);
 
+  // el filtro de estado aplica a las tarjetas (el estado vive en cada asignación)
+  const statusChunks = useMemo(
+    () => (filters.status === "all" ? chunks : chunks.filter((c) => c.status === filters.status)),
+    [chunks, filters.status]
+  );
+  const statusOrderIds = useMemo(
+    () => new Set(statusChunks.map((c) => c.orderId)),
+    [statusChunks]
+  );
+
   const visibleOrders = useMemo(
     () =>
       orders.filter((o) => {
         if (filters.client !== "all" && o.client !== filters.client) return false;
-        if (filters.status !== "all" && o.status !== filters.status) return false;
+        if (filters.status !== "all" && !statusOrderIds.has(o.id)) return false;
         if (filters.product !== "all" && o.product !== filters.product) return false;
         return true;
       }),
-    [orders, filters]
+    [orders, filters, statusOrderIds]
   );
 
   const visibleIds = useMemo(() => new Set(visibleOrders.map((o) => o.id)), [visibleOrders]);
-  const visibleChunks = useMemo(() => chunks.filter((c) => visibleIds.has(c.orderId)), [chunks, visibleIds]);
+  const visibleChunks = useMemo(
+    () => statusChunks.filter((c) => visibleIds.has(c.orderId)),
+    [statusChunks, visibleIds]
+  );
 
   // ocupación real por día (independiente de filtros) para la barra de capacidad
   const assignedByDate = useMemo(() => {
@@ -162,16 +174,16 @@ export default function App() {
 
   const confirmDespacho = () => {
     if (modal?.type !== "despacho") return;
-    const o = ordersById.get(modal.orderId);
-    api.confirmDespacho(modal.orderId);
-    notify(`Pedido ${o?.code ?? ""} despachado — salió del backlog.`, "ok");
+    const c = chunks.find((x) => x.id === modal.chunkId);
+    api.confirmDespachoChunk(modal.chunkId);
+    notify(`Tarjeta de ${c ? fmtNum(c.units) : ""} uds marcada como despachada.`, "ok");
     setModal(null);
   };
 
   const modalOrder =
-    modal && "orderId" in modal && modal.orderId ? (ordersById.get(modal.orderId) ?? null) : null;
+    modal?.type === "order" && modal.orderId ? (ordersById.get(modal.orderId) ?? null) : null;
   const modalChunk =
-    modal?.type === "split" ? (chunks.find((c) => c.id === modal.chunkId) ?? null) : null;
+    modal && "chunkId" in modal ? (chunks.find((c) => c.id === modal.chunkId) ?? null) : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-paper text-ink">
@@ -219,8 +231,6 @@ export default function App() {
               dates={dates}
               onEditOrder={(id) => setModal({ type: "order", orderId: id })}
               onNewOrder={() => setModal({ type: "order", orderId: null })}
-              onBlock={(id) => setModal({ type: "block", orderId: id })}
-              onDespacho={(id) => setModal({ type: "despacho", orderId: id })}
               onAssign={(orderId, date) => setModal({ type: "assign", orderId, date })}
             />
 
@@ -236,8 +246,8 @@ export default function App() {
                 notify={notify}
                 onCardClick={(id) => setDrawerId(id)}
                 onSplit={(chunkId) => setModal({ type: "split", chunkId })}
-                onBlockOrder={(id) => setModal({ type: "block", orderId: id })}
-                onDespacho={(id) => setModal({ type: "despacho", orderId: id })}
+                onBlockChunk={(chunkId) => setModal({ type: "block", chunkId })}
+                onDespachoChunk={(chunkId) => setModal({ type: "despacho", chunkId })}
                 onRemoveChunk={(chunkId) => {
                   api.removeChunk(chunkId);
                   notify("Tarjeta retirada del día.", "warn");
@@ -277,8 +287,6 @@ export default function App() {
               api={api}
               onClose={() => setDrawerId(null)}
               onEditOrder={(id) => setModal({ type: "order", orderId: id })}
-              onBlockOrder={(id) => setModal({ type: "block", orderId: id })}
-              onDespacho={(id) => setModal({ type: "despacho", orderId: id })}
               notify={notify}
             />
           )}
@@ -324,27 +332,42 @@ export default function App() {
         />
       )}
 
-      {modal?.type === "block" && modalOrder && (
+      {modal?.type === "block" && modalChunk && (
         <BlockModal
-          order={modalOrder}
+          chunk={modalChunk}
+          orderCode={ordersById.get(modalChunk.orderId)?.code ?? ""}
           onClose={() => setModal(null)}
           onConfirm={(reason) => {
-            api.blockOrder(modalOrder.id, reason);
-            notify(`Pedido bloqueado — ${reason}.`, "warn");
+            api.blockChunk(modalChunk.id, reason);
+            notify(`Tarjeta bloqueada — ${reason}.`, "warn");
             setModal(null);
           }}
         />
       )}
 
-      {modal?.type === "despacho" && modalOrder && (
-        <ConfirmModal
-          title="Confirmar despacho / terminado"
-          body={despachoBody(modalOrder)}
-          confirmLabel="Sí, el pedido finalizó"
-          onClose={() => setModal(null)}
-          onConfirm={confirmDespacho}
-        />
-      )}
+      {modal?.type === "despacho" &&
+        modalChunk &&
+        (() => {
+          const o = ordersById.get(modalChunk.orderId);
+          const pendientes = chunks.filter(
+            (c) => c.orderId === modalChunk.orderId && c.id !== modalChunk.id && c.status !== "despacho"
+          ).length;
+          return (
+            <ConfirmModal
+              title="Confirmar despacho de la tarjeta"
+              body={`¿Estás seguro de que ya finalizó esta parte del pedido ${o?.code ?? ""}? Se marcarán ${fmtNum(
+                modalChunk.units
+              )} uds del ${fmtMedium(modalChunk.date)} como despachadas. Las demás tarjetas del pedido conservan su propio estado.${
+                pendientes === 0
+                  ? " Como es la última tarjeta pendiente, el pedido saldrá del backlog (seguirá visible en el calendario)."
+                  : ""
+              }`}
+              confirmLabel="Sí, despachar esta tarjeta"
+              onClose={() => setModal(null)}
+              onConfirm={confirmDespacho}
+            />
+          );
+        })()}
 
       {modal?.type === "assign" && (
         <AssignModal

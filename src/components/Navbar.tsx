@@ -129,7 +129,9 @@ export function Navbar({
                     {o.product}
                     <span className="text-mut"> · {o.client}</span>
                   </span>
-                  <Badge status={o.status} size="sm" />
+                  <span className="shrink-0 font-mono text-[10.5px] tabular text-mut">
+                    {o.totalUnits} uds
+                  </span>
                 </button>
               ))
             )}

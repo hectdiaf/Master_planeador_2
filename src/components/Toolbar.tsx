@@ -1,16 +1,15 @@
 import { CalendarClock, ChevronLeft, ChevronRight, FilterX, Plus } from "lucide-react";
-import type { Filters, Order, OrderStatus } from "../types";
+import type { ChunkStatus, Filters, Order } from "../types";
 import { STATUS_FLOW, STATUS_META } from "../types";
 import { btnPrimary } from "./ui";
 
-const STATUS_OPTIONS: OrderStatus[] = [
+const STATUS_OPTIONS: ChunkStatus[] = [
   "revision",
   "reacondicionamiento",
   "qa",
   "empaque",
   "despacho",
   "bloqueado",
-  "backlog",
 ];
 
 function Select({
@@ -181,7 +180,7 @@ export function Toolbar({
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
           Leyenda
         </span>
-        {[...STATUS_FLOW, "bloqueado" as OrderStatus].map((s) => (
+        {[...STATUS_FLOW, "bloqueado" as ChunkStatus].map((s) => (
           <span key={s} className="flex items-center gap-1.5 text-[11px] text-mut">
             <span
               className="h-2 w-2 rounded-full"

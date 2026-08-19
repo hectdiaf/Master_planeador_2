@@ -1,19 +1,7 @@
 import { useState } from "react";
-import {
-  AlertTriangle,
-  CalendarDays,
-  Check,
-  Pencil,
-  Send,
-  X,
-} from "lucide-react";
-import type { Chunk, Order, OrderStatus } from "../types";
-import {
-  FLOW_LABELS,
-  ORDER_COLORS,
-  STATUS_FLOW,
-  STATUS_META,
-} from "../types";
+import { AlertTriangle, CalendarDays, Pencil, Send, Unlock, X } from "lucide-react";
+import type { Chunk, ChunkStatus, Order } from "../types";
+import { ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
 import { fmtDateTime, fmtMedium, fmtNum } from "../lib";
 import type { PlannerApi } from "../store";
 import { Badge } from "./ui";
@@ -35,8 +23,6 @@ export function Drawer({
   api,
   onClose,
   onEditOrder,
-  onBlockOrder,
-  onDespacho,
   notify,
 }: {
   order: Order;
@@ -44,15 +30,15 @@ export function Drawer({
   api: PlannerApi;
   onClose: () => void;
   onEditOrder: (id: string) => void;
-  onBlockOrder: (id: string) => void;
-  onDespacho: (id: string) => void;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
 }) {
   const [note, setNote] = useState("");
   const accent = ORDER_COLORS[order.color];
-  const blocked = order.status === "bloqueado";
-  const curIdx = STATUS_FLOW.indexOf(order.status);
   const assigned = chunks.reduce((a, c) => a + c.units, 0);
+  const blockedChunks = chunks.filter((c) => c.status === "bloqueado");
+
+  const byStatus = (s: ChunkStatus) =>
+    chunks.filter((c) => c.status === s).reduce((a, c) => a + c.units, 0);
 
   const submitNote = () => {
     const t = note.trim();
@@ -68,11 +54,15 @@ export function Drawer({
       <div className="flex items-start gap-2.5 border-b border-line px-4 py-3">
         <span className="mt-1 h-9 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <h2 className="font-display text-[17px] font-bold uppercase leading-tight tracking-wide">
               {order.code}
             </h2>
-            <Badge status={order.status} size="sm" />
+            {order.archived && (
+              <span className="rounded-full bg-ok/15 px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider text-ok">
+                Finalizado
+              </span>
+            )}
           </div>
           <p className="truncate text-[13.5px] font-semibold">{order.product}</p>
           <p className="mt-0.5 truncate text-[11px] text-mut">
@@ -89,30 +79,39 @@ export function Drawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* banner de bloqueo */}
-        {blocked && (
+        {/* banner de tarjetas bloqueadas */}
+        {blockedChunks.length > 0 && (
           <div className="mx-4 mt-3 rounded-lg border border-danger/45 bg-danger/[0.07] p-3">
             <div className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-danger">
               <AlertTriangle size={13} />
-              Pedido bloqueado / en pausa
+              {blockedChunks.length} tarjeta{blockedChunks.length > 1 ? "s" : ""} bloqueada
+              {blockedChunks.length > 1 ? "s" : ""}
             </div>
-            <p className="mt-1 text-[12.5px] font-medium leading-snug">
-              Motivo: {order.blockReason || "—"}
-            </p>
-            {order.blockedAt && (
-              <p className="mt-0.5 font-mono text-[10.5px] tabular text-danger/80">
-                {fmtDateTime(order.blockedAt)}
-              </p>
-            )}
-            <button
-              onClick={() => {
-                api.unblockOrder(order.id);
-                notify("Bloqueo liberado.", "ok");
-              }}
-              className="mt-2 rounded-md border border-ok/40 bg-ok/10 px-2.5 py-1 text-[11.5px] font-semibold text-ok transition hover:bg-ok/20"
-            >
-              Liberar bloqueo
-            </button>
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {blockedChunks.map((c) => (
+                <div key={c.id} className="rounded-md bg-panel/70 px-2.5 py-1.5">
+                  <p className="text-[12px] font-medium leading-snug">
+                    Motivo: {c.blockReason || "—"}
+                  </p>
+                  <div className="mt-0.5 flex items-center justify-between gap-2">
+                    <p className="font-mono text-[10px] tabular text-danger/80">
+                      {c.blockedAt ? fmtDateTime(c.blockedAt) : ""} · {fmtMedium(c.date)} ·{" "}
+                      {fmtNum(c.units)} uds
+                    </p>
+                    <button
+                      onClick={() => {
+                        api.unblockChunk(c.id);
+                        notify("Bloqueo liberado.", "ok");
+                      }}
+                      className="flex shrink-0 items-center gap-1 rounded border border-ok/40 bg-ok/10 px-1.5 py-[2px] text-[10px] font-bold text-ok transition hover:bg-ok/20"
+                    >
+                      <Unlock size={10} />
+                      Liberar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -134,7 +133,43 @@ export function Drawer({
           </div>
         </section>
 
-        {/* avance */}
+        {/* unidades por proceso */}
+        <section className="px-4 pt-3">
+          <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
+            Unidades por proceso
+          </h3>
+          <p className="mt-0.5 text-[10px] leading-snug text-faint">
+            Cada tarjeta del calendario avanza con su propio estado.
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {[...STATUS_FLOW, "bloqueado" as ChunkStatus].map((s) => {
+              const u = byStatus(s);
+              if (u === 0) return null;
+              const m = STATUS_META[s];
+              return (
+                <span
+                  key={s}
+                  className="flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px] font-semibold tabular"
+                  style={{
+                    color: m.hex,
+                    borderColor: `color-mix(in srgb, ${m.hex} 35%, transparent)`,
+                    background: `color-mix(in srgb, ${m.hex} 10%, transparent)`,
+                  }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.hex }} />
+                  {m.label}: {fmtNum(u)} uds
+                </span>
+              );
+            })}
+            {assigned === 0 && (
+              <span className="rounded-md border border-dashed border-line px-2 py-1 text-[11px] text-faint">
+                Sin unidades agendadas todavía
+              </span>
+            )}
+          </div>
+        </section>
+
+        {/* avance general */}
         <section className="px-4 pt-3">
           <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
             Resumen de avance
@@ -171,90 +206,40 @@ export function Drawer({
           </div>
         </section>
 
-        {/* checklist del flujo */}
-        <section className="px-4 pt-3">
-          <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
-            Checklist del flujo operativo
-          </h3>
-          {blocked && (
-            <p className="mt-1 text-[10.5px] font-medium text-danger">
-              Flujo congelado mientras el pedido esté bloqueado.
-            </p>
-          )}
-          <div className="mt-1.5 flex flex-col gap-1">
-            {STATUS_FLOW.map((s, i) => {
-              const done = order.status === "despacho" ? true : i < curIdx;
-              const current = !blocked && i === curIdx && order.status !== "despacho";
-              const hex = STATUS_META[s].hex;
-              return (
-                <button
-                  key={s}
-                  disabled={blocked}
-                  onClick={() => {
-                    if (s === "despacho") {
-                      onDespacho(order.id);
-                    } else if (s !== order.status) {
-                      api.setStatus(order.id, s);
-                      notify(`Estado → ${STATUS_META[s].label}`);
-                    }
-                  }}
-                  className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition ${
-                    current
-                      ? "border-accent/60 bg-accent/[0.07]"
-                      : "border-transparent hover:border-line hover:bg-raise"
-                  } ${blocked ? "cursor-not-allowed opacity-60" : ""}`}
-                >
-                  <span
-                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[11px] font-bold ${
-                      current ? "animate-ping-dot" : ""
-                    }`}
-                    style={{
-                      borderColor: done || current ? hex : "var(--sf-line)",
-                      color: done || current ? hex : "var(--sf-faint)",
-                      background:
-                        done || current
-                          ? `color-mix(in srgb, ${hex} 12%, transparent)`
-                          : "transparent",
-                    }}
-                  >
-                    {done ? <Check size={12} /> : i + 1}
-                  </span>
-                  <span className={`min-w-0 flex-1 truncate text-[12.5px] font-medium ${done || current ? "" : "text-faint"}`}>
-                    {FLOW_LABELS[s]}
-                  </span>
-                  {current && (
-                    <span className="rounded-full bg-accent/15 px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider text-accent">
-                      Actual
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
         {/* tarjetas en calendario */}
         <section className="px-4 pt-3">
           <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
-            Asignaciones en calendario ({chunks.length})
+            Tarjetas en calendario ({chunks.length})
           </h3>
           {chunks.length === 0 ? (
             <p className="mt-1.5 rounded-lg border border-dashed border-line px-3 py-2.5 text-[11.5px] text-faint">
               Sin unidades agendadas — arrastra el pedido desde el backlog al tablero.
             </p>
           ) : (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <div className="mt-1.5 flex flex-col gap-1">
               {chunks.map((c) => (
-                <span
+                <div
                   key={c.id}
-                  className="flex items-center gap-1.5 rounded-md border border-line bg-raise/60 px-2 py-1 font-mono text-[11px] tabular"
+                  className="flex items-center gap-2 rounded-md border border-line bg-raise/40 px-2 py-1.5"
                 >
-                  <CalendarDays size={11} className="text-faint" />
-                  {fmtMedium(c.date)} · <b>{fmtNum(c.units)} uds</b>
-                </span>
+                  <span className="flex items-center gap-1 font-mono text-[11px] tabular text-mut">
+                    <CalendarDays size={11} />
+                    {fmtMedium(c.date)}
+                  </span>
+                  <span className="font-mono text-[11.5px] font-bold tabular">
+                    {fmtNum(c.units)} uds
+                  </span>
+                  <span className="ml-auto">
+                    <Badge status={c.status} size="sm" />
+                  </span>
+                </div>
               ))}
             </div>
           )}
+          <p className="mt-1.5 text-[10px] leading-snug text-faint">
+            El estado, bloqueo y despacho se gestionan por tarjeta desde su menú de
+            edición rápida en el calendario.
+          </p>
         </section>
 
         {/* bitácora */}
