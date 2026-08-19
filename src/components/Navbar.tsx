@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { Moon, RotateCcw, Search, Sun } from "lucide-react";
+import { Moon, Search, Sun } from "lucide-react";
 import type { Order } from "../types";
-import { accentOf } from "../types";
-import { fmtLong, orderUnits, todayISO } from "../lib";
+import { ORDER_COLORS } from "../types";
+import { fmtLong, todayISO } from "../lib";
+import { Badge } from "./ui";
 
 function BrandMark() {
   return (
@@ -19,22 +20,16 @@ export function Navbar({
   query,
   setQuery,
   orders,
-  productName,
   onPick,
   theme,
   onToggleTheme,
-  canUndo,
-  onUndo,
 }: {
   query: string;
   setQuery: (q: string) => void;
   orders: Order[];
-  productName: (id: string) => string;
   onPick: (order: Order) => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
-  canUndo: boolean;
-  onUndo: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -67,26 +62,21 @@ export function Navbar({
     if (!q) return [];
     return orders
       .filter((o) =>
-        [o.code, o.client, o.channel, ...o.items.map((i) => productName(i.productId))]
+        [o.code, o.product, o.client, o.channel, o.category]
           .join(" ")
           .toLowerCase()
           .includes(q)
       )
       .slice(0, 6);
-  }, [query, orders, productName]);
+  }, [query, orders]);
 
   return (
     <header className="relative z-40 flex h-14 shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
       <div className="flex min-w-0 items-center gap-2.5">
         <BrandMark />
         <div className="leading-none">
-          <div className="flex items-center gap-1.5 font-display text-[17px] font-bold uppercase tracking-[0.06em]">
-            <span>
-              Planificador <span className="text-accent">Operaciones</span>
-            </span>
-            <span className="rounded-[4px] bg-accent px-1.5 py-[2px] font-mono text-[10px] font-semibold tracking-[0.14em] text-white dark:text-[#0d1512]">
-              REFURBI
-            </span>
+          <div className="font-display text-[17px] font-bold uppercase tracking-[0.06em]">
+            Planificador <span className="text-accent">Operaciones</span>
           </div>
           <div className="mt-[3px] font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint">
             Reacondicionamiento · Celulares
@@ -132,16 +122,14 @@ export function Navbar({
                 >
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
-                    style={{ background: accentOf(o.colorIdx) }}
+                    style={{ background: ORDER_COLORS[o.color] }}
                   />
                   <span className="font-mono text-[11px] text-mut">{o.code}</span>
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
-                    {o.items.map((i) => productName(i.productId)).join(" + ")}
-                    <span className="text-mut">
-                      {" "}
-                      · {o.client} · {orderUnits(o)} uds
-                    </span>
+                    {o.product}
+                    <span className="text-mut"> · {o.client}</span>
                   </span>
+                  <Badge status={o.status} size="sm" />
                 </button>
               ))
             )}
@@ -153,21 +141,6 @@ export function Navbar({
         <span className="hidden font-mono text-[11px] uppercase tracking-wider text-mut md:block">
           {fmtLong(todayISO())}
         </span>
-
-        <button
-          onClick={onUndo}
-          disabled={!canUndo}
-          aria-label="Deshacer último cambio"
-          title="Deshacer (Ctrl+Z)"
-          className={`grid h-8 w-8 place-items-center rounded-lg border border-line bg-panel transition ${
-            canUndo
-              ? "text-ink hover:border-line2 hover:bg-raise active:scale-95"
-              : "cursor-not-allowed text-faint opacity-50"
-          }`}
-        >
-          <RotateCcw size={15} />
-        </button>
-
         <button
           onClick={onToggleTheme}
           role="switch"

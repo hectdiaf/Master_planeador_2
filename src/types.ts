@@ -1,44 +1,11 @@
-/* ── Modelo de dominio ────────────────────────────────────────────
-   El estado vive en cada tarjeta (Chunk) del calendario, NO en el
-   pedido general. Un pedido puede tener unidades en procesos
-   distintos simultáneamente.                                */
-
-export type Channel =
-  | "Retail"
-  | "Open Market"
-  | "Ecommerce"
-  | "Tiendas propias"
-  | "SAC"
-  | "Otros";
-
-export const CHANNELS: Channel[] = [
-  "Retail",
-  "Open Market",
-  "Ecommerce",
-  "Tiendas propias",
-  "SAC",
-  "Otros",
-];
-
-/** Estados operativos — pertenecen a cada tarjeta del calendario. */
-export type ChunkStatus =
+export type OrderStatus =
+  | "backlog"
   | "revision"
   | "reacondicionamiento"
   | "qa"
   | "empaque"
   | "despacho"
   | "bloqueado";
-
-export interface Product {
-  id: string;
-  name: string;
-}
-
-/** Línea de producto dentro de un pedido (un pedido = N referencias). */
-export interface OrderItem {
-  productId: string;
-  qty: number;
-}
 
 export interface LogEntry {
   id: string;
@@ -50,79 +17,100 @@ export interface LogEntry {
 export interface Order {
   id: string;
   code: string;
+  product: string;
   client: string;
-  channel: Channel;
+  channel: string;
+  subchannel: string;
+  category: string;
+  color: ColorKey;
+  totalUnits: number;
+  progress: number; // 0..100
   requestDate: string; // ISO date
   deliveryDate: string; // ISO date
-  items: OrderItem[]; // unidades totales = suma de items (siempre calculado)
-  colorIdx: number;
+  status: OrderStatus;
+  prevStatus?: OrderStatus;
+  blockReason?: string;
+  blockedAt?: string;
+  archived?: boolean; // despachado confirmado: sale del backlog, sigue en calendario
   logs: LogEntry[];
   createdAt: string;
   updatedAt: string;
 }
 
-/** Tarjeta / asignación diaria en el calendario. Estado independiente. */
 export interface Chunk {
   id: string;
   orderId: string;
-  date: string; // jornada operativa (nunca domingo)
+  date: string; // ISO date (jornada operativa, nunca domingo)
   units: number;
-  status: ChunkStatus;
-  prevStatus?: ChunkStatus; // para liberar bloqueos
-  blockReason?: string;
-  blockedAt?: string; // ISO datetime
   createdAt: string;
 }
 
-/** Capacidad configurada POR DÍA (no por semana). */
 export interface DayConfig {
-  tecnicos: number; // 15 teléfonos / turno
-  qa: number; // 45 unidades / turno
-  minutos: number; // minutos operativos del día (510 = turno 7:40–17:00 menos 50 min de pausas)
-  paradas: number; // paradas no programadas / cuellos de botella (min)
+  techs: number;
+  qa: number;
+  opMin: number;
+  stopMin: number;
 }
-
-export const DEFAULT_DAY: DayConfig = {
-  tecnicos: 10,
-  qa: 5,
-  minutos: 510,
-  paradas: 50,
-};
-
-export const TECH_RATE = 15; // teléfonos por turno por técnico
-export const QA_RATE = 45; // unidades por turno por persona de QA
-export const BASE_SHIFT_MIN = 510; // 8.5 h efectivas de referencia
 
 export interface Filters {
   client: string; // 'all' o nombre de cliente
-  status: string; // 'all' o ChunkStatus
+  status: string; // 'all' o OrderStatus
   product: string; // 'all' o producto
 }
 
-export const STATUS_META: Record<
-  ChunkStatus,
-  { label: string; short: string; hex: string }
-> = {
-  revision: { label: "Primera Revisión", short: "Revisión", hex: "#0284c7" },
-  reacondicionamiento: {
-    label: "Reacondicionamiento",
-    short: "Reac.",
-    hex: "#0d9488",
-  },
-  qa: { label: "QA y Limpieza", short: "QA", hex: "#b45309" },
-  empaque: { label: "Empaque", short: "Emp.", hex: "#65a30d" },
-  despacho: { label: "Despacho / Terminado", short: "Fin", hex: "#15803d" },
-  bloqueado: { label: "Bloqueado / Pausa", short: "Bloq.", hex: "#dc2626" },
+export type ColorKey =
+  | "teal"
+  | "sky"
+  | "amber"
+  | "orange"
+  | "rose"
+  | "lime"
+  | "cyan";
+
+export const ORDER_COLORS: Record<ColorKey, string> = {
+  teal: "#0d9488",
+  sky: "#0284c7",
+  amber: "#d97706",
+  orange: "#ea580c",
+  rose: "#e11d48",
+  lime: "#65a30d",
+  cyan: "#0e7490",
 };
 
-/** Flujo operativo en orden (checklist y avance de etapas). */
-export const FLOW: ChunkStatus[] = [
+export const COLOR_KEYS = Object.keys(ORDER_COLORS) as ColorKey[];
+
+export const STATUS_META: Record<
+  OrderStatus,
+  { label: string; short: string; hex: string }
+> = {
+  backlog: { label: "Pendiente", short: "Pend.", hex: "#7b8590" },
+  revision: { label: "Primera Revisión", short: "Revisión", hex: "#0284c7" },
+  reacondicionamiento: { label: "Reacondicionamiento", short: "Reac.", hex: "#0d9488" },
+  qa: { label: "QA y Limpieza", short: "QA", hex: "#d97706" },
+  empaque: { label: "Empaque", short: "Emp.", hex: "#65a30d" },
+  despacho: { label: "Despachado", short: "Fin", hex: "#188a4c" },
+  bloqueado: { label: "Bloqueado / Pausa", short: "Bloq.", hex: "#d3382f" },
+};
+
+/** Flujo operativo en orden (para checklist y avance de etapas). */
+export const STATUS_FLOW: OrderStatus[] = [
+  "backlog",
   "revision",
   "reacondicionamiento",
   "qa",
   "empaque",
   "despacho",
 ];
+
+export const FLOW_LABELS: Record<OrderStatus, string> = {
+  backlog: "Pendiente en backlog",
+  revision: "Primera revisión",
+  reacondicionamiento: "Reacondicionamiento",
+  qa: "Control de calidad y limpieza",
+  empaque: "Empaque",
+  despacho: "Despacho / Terminado",
+  bloqueado: "Bloqueado / En pausa",
+};
 
 export const BLOCK_REASONS = [
   "Falta de repuestos",
@@ -131,19 +119,25 @@ export const BLOCK_REASONS = [
   "Otro",
 ] as const;
 
-/** Paleta de acento por pedido (índice cíclico). */
-export const ACCENTS = [
-  "#0d9488",
-  "#0284c7",
-  "#d97706",
-  "#ea580c",
-  "#e11d48",
-  "#65a30d",
-  "#0e7490",
-  "#a21caf",
+export const CATEGORIES = [
+  "Premium",
+  "Gama Media",
+  "Gama Entrada",
+  "Outlet",
+  "Lote Corporativo",
+  "Lote Mayorista",
 ];
 
-export const accentOf = (idx: number) => ACCENTS[idx % ACCENTS.length];
+export const CHANNELS = [
+  "Marketplace",
+  "Retail",
+  "Operador",
+  "Mayorista",
+  "Corporativo",
+];
+
+export const TECH_RATE = 15; // teléfonos/día por técnico
+export const QA_RATE = 45; // unidades/día por persona de QA
 
 export function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);

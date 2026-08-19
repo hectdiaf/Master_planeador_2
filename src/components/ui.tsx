@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
-import type { ChunkStatus } from "../types";
+import type { OrderStatus } from "../types";
 import { STATUS_META } from "../types";
 
 export const inputCls =
@@ -22,7 +22,7 @@ export function Badge({
   status,
   size = "md",
 }: {
-  status: ChunkStatus;
+  status: OrderStatus;
   size?: "sm" | "md";
 }) {
   const m = STATUS_META[status];

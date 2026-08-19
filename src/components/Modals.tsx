@@ -1,82 +1,84 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, PackagePlus, Plus, Trash2 } from "lucide-react";
-import type { Channel, Chunk, Order, OrderItem, Product } from "../types";
-import { BLOCK_REASONS, CHANNELS, STATUS_META, clamp } from "../types";
+import { AlertTriangle } from "lucide-react";
+import type { Chunk, ColorKey, Order } from "../types";
+import {
+  BLOCK_REASONS,
+  CATEGORIES,
+  CHANNELS,
+  COLOR_KEYS,
+  ORDER_COLORS,
+  STATUS_META,
+  clamp,
+} from "../types";
 import {
   businessDaysFrom,
   colDate,
   ensureBiz,
   fmtMedium,
   fmtNum,
-  orderRemaining,
-  orderUnits,
   todayISO,
 } from "../lib";
-import { Modal, Stepper, btnDanger, btnGhost, btnPrimary, inputCls, labelCls } from "./ui";
 import type { OrderInput } from "../store";
+import { Modal, Stepper, btnDanger, btnGhost, btnPrimary, inputCls, labelCls } from "./ui";
 
-/* ── Nuevo pedido / edición (multi-producto) ────────────────────── */
+/* ── Nuevo pedido / edición ─────────────────────────────────────── */
 
 export function OrderFormModal({
   order,
   nextCode,
-  products,
-  assignedUnits,
+  scheduledUnits,
   onClose,
   onConfirm,
   onDelete,
 }: {
   order: Order | null;
   nextCode: string;
-  products: Product[];
-  assignedUnits: number;
+  scheduledUnits: number;
   onClose: () => void;
   onConfirm: (input: OrderInput) => void;
   onDelete?: () => void;
 }) {
+  const [product, setProduct] = useState(order?.product ?? "");
   const [client, setClient] = useState(order?.client ?? "");
-  const [channel, setChannel] = useState<Channel>(order?.channel ?? "Retail");
-  const [requestDate, setRequestDate] = useState(
-    order?.requestDate ?? ensureBiz(todayISO())
-  );
-  const [deliveryDate, setDeliveryDate] = useState(
-    order?.deliveryDate ?? ensureBiz(todayISO())
-  );
-  const [items, setItems] = useState<OrderItem[]>(
-    order ? order.items.map((i) => ({ ...i })) : [{ productId: products[0]?.id ?? "", qty: 10 }]
-  );
+  const [channel, setChannel] = useState(order?.channel ?? CHANNELS[0]);
+  const [subchannel, setSubchannel] = useState(order?.subchannel ?? "");
+  const [category, setCategory] = useState(order?.category ?? CATEGORIES[0]);
+  const [color, setColor] = useState<ColorKey>(order?.color ?? "teal");
+  const [totalUnits, setTotalUnits] = useState(order?.totalUnits ?? 100);
+  const [requestDate, setRequestDate] = useState(order?.requestDate ?? ensureBiz(todayISO()));
+  const [deliveryDate, setDeliveryDate] = useState(order?.deliveryDate ?? ensureBiz(todayISO()));
   const [touched, setTouched] = useState(false);
   const [armed, setArmed] = useState(false);
 
-  const total = items.reduce((a, i) => a + i.qty, 0);
-  const invalidQty = total <= 0 || items.some((i) => i.qty <= 0);
-  const belowAssigned = order !== null && total < assignedUnits;
-  const canSave = client.trim().length > 0 && !invalidQty && !belowAssigned && items.every((i) => i.productId);
-
-  const setQty = (idx: number, qty: number) =>
-    setItems((xs) => xs.map((x, i) => (i === idx ? { ...x, qty: clamp(Math.round(qty), 1, 99999) } : x)));
-  const setProduct = (idx: number, productId: string) =>
-    setItems((xs) => xs.map((x, i) => (i === idx ? { ...x, productId } : x)));
-  const addRow = () => {
-    const used = new Set(items.map((i) => i.productId));
-    const next = products.find((p) => !used.has(p.id));
-    if (!next) return;
-    setItems((xs) => [...xs, { productId: next.id, qty: 10 }]);
-  };
+  const valid =
+    product.trim().length > 0 &&
+    client.trim().length > 0 &&
+    totalUnits >= Math.max(1, scheduledUnits);
 
   return (
     <Modal
       title={order ? `Editar ${order.code}` : "Nuevo pedido"}
-      subtitle={
-        order
-          ? undefined
-          : `Se creará con el código ${nextCode} · las unidades totales se calculan automáticamente`
-      }
+      subtitle={order ? undefined : `Se creará con el código ${nextCode} · entrará al backlog`}
       onClose={onClose}
-      width={480}
+      width={470}
     >
       <div className="flex flex-col gap-3.5">
         <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className={labelCls}>Producto *</span>
+            <input
+              value={product}
+              onChange={(e) => {
+                setProduct(e.target.value);
+                setTouched(true);
+              }}
+              placeholder="Ej. iPhone 12 64GB"
+              className={inputCls}
+            />
+            {touched && !product.trim() && (
+              <p className="mt-1 text-[10.5px] font-medium text-danger">Requerido.</p>
+            )}
+          </div>
           <div>
             <span className={labelCls}>Cliente *</span>
             <input
@@ -92,13 +94,12 @@ export function OrderFormModal({
               <p className="mt-1 text-[10.5px] font-medium text-danger">Requerido.</p>
             )}
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <span className={labelCls}>Canal de venta</span>
-            <select
-              value={channel}
-              onChange={(e) => setChannel(e.target.value as Channel)}
-              className={inputCls}
-            >
+            <select value={channel} onChange={(e) => setChannel(e.target.value)} className={inputCls}>
               {CHANNELS.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -106,91 +107,82 @@ export function OrderFormModal({
               ))}
             </select>
           </div>
+          <div>
+            <span className={labelCls}>Subcanal</span>
+            <input
+              value={subchannel}
+              onChange={(e) => setSubchannel(e.target.value)}
+              placeholder="Ej. Postpago"
+              className={inputCls}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className={labelCls}>Tipo / categoría</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span className={labelCls}>Unidades totales</span>
+            <Stepper
+              value={totalUnits}
+              onChange={setTotalUnits}
+              min={Math.max(1, scheduledUnits)}
+              max={9999}
+              step={10}
+              unit="uds"
+            />
+            {scheduledUnits > 0 && (
+              <p className="mt-1 text-[10px] text-faint">
+                Mínimo {scheduledUnits}: ya hay unidades en calendario.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <span className={labelCls}>Fecha de solicitud</span>
-            <input type="date" value={requestDate} onChange={(e) => e.target.value && setRequestDate(e.target.value)} className={inputCls} />
+            <input
+              type="date"
+              value={requestDate}
+              onChange={(e) => e.target.value && setRequestDate(e.target.value)}
+              className={inputCls}
+            />
           </div>
           <div>
             <span className={labelCls}>Entrega tentativa</span>
-            <input type="date" value={deliveryDate} onChange={(e) => e.target.value && setDeliveryDate(e.target.value)} className={inputCls} />
+            <input
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => e.target.value && setDeliveryDate(e.target.value)}
+              className={inputCls}
+            />
           </div>
         </div>
 
         <div>
-          <div className="mb-1 flex items-center justify-between">
-            <span className={labelCls + " mb-0"}>Productos / referencias *</span>
-            <button
-              onClick={addRow}
-              disabled={items.length >= products.length}
-              className="flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-mut transition enabled:hover:border-accent/50 enabled:hover:text-accent disabled:opacity-40"
-            >
-              <Plus size={11} />
-              Agregar producto
-            </button>
+          <span className={labelCls}>Color del lote</span>
+          <div className="flex gap-1.5">
+            {COLOR_KEYS.map((k) => (
+              <button
+                key={k}
+                onClick={() => setColor(k)}
+                aria-label={`Color ${k}`}
+                className={`h-7 w-7 rounded-full border-2 transition active:scale-90 ${
+                  color === k ? "border-ink" : "border-transparent hover:scale-105"
+                }`}
+                style={{ background: ORDER_COLORS[k] }}
+              />
+            ))}
           </div>
-
-          <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-raise/50 p-2.5">
-            {items.map((it, idx) => {
-              const usedElsewhere = new Set(
-                items.filter((_, i) => i !== idx).map((x) => x.productId)
-              );
-              return (
-                <div key={idx} className="flex items-center gap-2">
-                  <select
-                    value={it.productId}
-                    onChange={(e) => setProduct(idx, e.target.value)}
-                    className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1.5 text-[12.5px] outline-none focus:border-accent"
-                  >
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id} disabled={usedElsewhere.has(p.id)}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={it.qty}
-                    min={1}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      if (!Number.isNaN(n)) setQty(idx, n);
-                    }}
-                    className="w-20 rounded-md border border-line bg-panel px-2 py-1.5 text-center font-mono text-[12.5px] font-semibold tabular outline-none focus:border-accent"
-                  />
-                  <span className="text-[10.5px] text-faint">uds</span>
-                  <button
-                    onClick={() => setItems((xs) => xs.filter((_, i) => i !== idx))}
-                    disabled={items.length <= 1}
-                    aria-label="Quitar producto"
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-faint transition enabled:hover:bg-danger/12 enabled:hover:text-danger disabled:opacity-30"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              );
-            })}
-
-            <div className="mt-1 flex items-center justify-between border-t border-line pt-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-mut">
-                <PackagePlus size={13} />
-                Unidades totales (calculadas)
-              </span>
-              <span className="rounded-md bg-accent/12 px-2.5 py-1 font-mono text-[14px] font-bold tabular text-accent">
-                {fmtNum(total)} uds
-              </span>
-            </div>
-          </div>
-
-          {belowAssigned && (
-            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-danger">
-              <AlertTriangle size={12} />
-              Hay {fmtNum(assignedUnits)} uds ya asignadas al calendario — el total no
-              puede ser menor. Reduce tarjetas primero.
-            </p>
-          )}
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-1">
@@ -201,7 +193,6 @@ export function OrderFormModal({
               </button>
             ) : (
               <button onClick={() => setArmed(true)} className={btnDanger}>
-                <Trash2 size={13} />
                 Eliminar
               </button>
             )
@@ -214,16 +205,21 @@ export function OrderFormModal({
             </button>
             <button
               onClick={() =>
-                canSave &&
+                valid &&
                 onConfirm({
+                  code: order?.code ?? nextCode,
+                  product: product.trim(),
                   client: client.trim(),
                   channel,
+                  subchannel: subchannel.trim(),
+                  category,
+                  color,
+                  totalUnits,
                   requestDate,
                   deliveryDate,
-                  items: items.map((i) => ({ ...i })),
                 })
               }
-              disabled={!canSave}
+              disabled={!valid}
               className={btnPrimary + " disabled:opacity-40"}
             >
               {order ? "Guardar cambios" : "Crear pedido"}
@@ -251,10 +247,9 @@ export function SplitModal({
   const dates = useMemo(() => businessDaysFrom(chunk.date, 8), [chunk.date]);
   const [count, setCount] = useState(Math.min(4, chunk.units));
   const [startIdx, setStartIdx] = useState(0);
-  const [rows, setRows] = useState<number[]>(() => {
-    const n = Math.min(4, chunk.units);
-    return distribute(chunk.units, n);
-  });
+  const [rows, setRows] = useState<number[]>(() =>
+    distribute(chunk.units, Math.min(4, chunk.units))
+  );
 
   function distribute(total: number, n: number): number[] {
     const base = Math.floor(total / n);
@@ -267,10 +262,7 @@ export function SplitModal({
     setCount(c);
     setRows(distribute(chunk.units, c));
   };
-  const applyStart = (i: number) => {
-    const s = clamp(i, 0, dates.length - count);
-    setStartIdx(s);
-  };
+  const applyStart = (i: number) => setStartIdx(clamp(i, 0, dates.length - count));
   const setRow = (i: number, v: number) =>
     setRows((r) => r.map((x, k) => (k === i ? clamp(Math.round(v), 0, chunk.units) : x)));
   const auto = () => setRows(distribute(chunk.units, count));
@@ -288,13 +280,17 @@ export function SplitModal({
     >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-3 gap-2.5">
-          <div className="col-span-1">
+          <div>
             <span className={labelCls}>Tarjetas</span>
             <Stepper value={count} onChange={applyCount} min={2} max={Math.min(8, chunk.units)} step={1} />
           </div>
           <div className="col-span-2">
             <span className={labelCls}>Inicio</span>
-            <select value={startIdx} onChange={(e) => applyStart(Number(e.target.value))} className={inputCls}>
+            <select
+              value={startIdx}
+              onChange={(e) => applyStart(Number(e.target.value))}
+              className={inputCls}
+            >
               {dates.slice(0, dates.length - count + 1).map((d, i) => (
                 <option key={d} value={i}>
                   {fmtMedium(d)}
@@ -349,23 +345,21 @@ export function SplitModal({
   );
 }
 
-/* ── Bloqueo de tarjeta (motivo obligatorio) ────────────────────── */
+/* ── Bloqueo de pedido (motivo obligatorio) ─────────────────────── */
 
 export function BlockModal({
-  chunk,
-  orderCode,
+  order,
   onClose,
   onConfirm,
 }: {
-  chunk: Chunk;
-  orderCode: string;
+  order: Order;
   onClose: () => void;
   onConfirm: (reason: string) => void;
 }) {
-  const [preset, setPreset] = useState<string>(chunk.blockReason ?? "");
+  const [preset, setPreset] = useState<string>(order.blockReason ?? "");
   const [detail, setDetail] = useState(
-    chunk.blockReason && !(BLOCK_REASONS as readonly string[]).includes(chunk.blockReason)
-      ? chunk.blockReason
+    order.blockReason && !(BLOCK_REASONS as readonly string[]).includes(order.blockReason)
+      ? order.blockReason
       : ""
   );
   const reason = preset === "Otro" ? detail.trim() : preset;
@@ -373,8 +367,8 @@ export function BlockModal({
 
   return (
     <Modal
-      title="Bloquear tarjeta"
-      subtitle={`${orderCode} · ${chunk.units} uds del ${fmtMedium(chunk.date)} — el motivo es obligatorio`}
+      title="Bloquear pedido"
+      subtitle={`${order.code} · ${order.product} — el motivo es obligatorio`}
       onClose={onClose}
       width={420}
     >
@@ -418,58 +412,7 @@ export function BlockModal({
             disabled={!ok}
             className="inline-flex items-center justify-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-[12.5px] font-semibold text-white transition enabled:hover:brightness-110 enabled:active:scale-[0.98] disabled:opacity-40"
           >
-            Bloquear tarjeta
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-/* ── Confirmación de despacho (por tarjeta) ─────────────────────── */
-
-export function DespachoModal({
-  chunk,
-  orderCode,
-  onClose,
-  onConfirm,
-}: {
-  chunk: Chunk;
-  orderCode: string;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Modal
-      title="Confirmar despacho"
-      subtitle="Esta acción aplica solo a la tarjeta seleccionada"
-      onClose={onClose}
-      width={420}
-    >
-      <div className="flex flex-col gap-3">
-        <div className="rounded-lg border border-ok/40 bg-ok/[0.07] p-3">
-          <p className="text-[13px] leading-snug">
-            ¿Estás seguro de que ya finalizó esta parte del pedido{" "}
-            <b className="font-mono">{orderCode}</b>?
-          </p>
-          <p className="mt-1 font-mono text-[11.5px] tabular text-mut">
-            {chunk.units} uds · {fmtMedium(chunk.date)} →{" "}
-            {STATUS_META.despacho.label}
-          </p>
-        </div>
-        <p className="text-[11.5px] leading-snug text-faint">
-          La tarjeta se marcará como despachada/terminada y permanecerá visible en el
-          calendario. Las demás tarjetas del pedido conservan su propio estado.
-        </p>
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={btnGhost}>
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md bg-ok px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:brightness-110 active:scale-[0.98]"
-          >
-            Sí, despachar {chunk.units} uds
+            Bloquear pedido
           </button>
         </div>
       </div>
@@ -484,7 +427,6 @@ export function AssignModal({
   chunks,
   date,
   presetOrderId,
-  productName,
   onClose,
   onConfirm,
 }: {
@@ -492,21 +434,25 @@ export function AssignModal({
   chunks: Chunk[];
   date: string;
   presetOrderId?: string;
-  productName: (id: string) => string;
   onClose: () => void;
   onConfirm: (orderId: string, units: number) => void;
 }) {
+  const remaining = (o: Order) =>
+    Math.max(0, o.totalUnits - chunks.filter((c) => c.orderId === o.id).reduce((a, c) => a + c.units, 0));
+
   const candidates = useMemo(
-    () => orders.filter((o) => orderRemaining(o, chunks) > 0),
+    () => orders.filter((o) => !o.archived && remaining(o) > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [orders, chunks]
   );
+
   const initial =
     presetOrderId && candidates.some((o) => o.id === presetOrderId)
       ? presetOrderId
       : (candidates[0]?.id ?? "");
   const [orderId, setOrderId] = useState(initial);
   const sel = candidates.find((o) => o.id === orderId);
-  const rem = sel ? orderRemaining(sel, chunks) : 0;
+  const rem = sel ? remaining(sel) : 0;
   const [units, setUnits] = useState(Math.max(1, rem));
   const valid = !!sel && units >= 1 && units <= rem;
   const c = colDate(date);
@@ -514,7 +460,7 @@ export function AssignModal({
   return (
     <Modal
       title="Asignar unidades"
-      subtitle={`${c.dowLong} ${c.dnum} ${c.mon} · entrarán en Primera Revisión`}
+      subtitle={`${c.dowLong} ${c.dnum} ${c.mon} · entrarán al plan del día`}
       onClose={onClose}
       width={430}
     >
@@ -531,14 +477,13 @@ export function AssignModal({
               onChange={(e) => {
                 setOrderId(e.target.value);
                 const o = candidates.find((x) => x.id === e.target.value);
-                if (o) setUnits(orderRemaining(o, chunks));
+                if (o) setUnits(remaining(o));
               }}
               className={inputCls}
             >
               {candidates.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.code} · {o.client} — {o.items.map((i) => productName(i.productId)).join(" + ")} (
-                  {orderRemaining(o, chunks)} pend.)
+                  {o.code} · {o.client} — {o.product} ({remaining(o)} pend.)
                 </option>
               ))}
             </select>
@@ -550,7 +495,7 @@ export function AssignModal({
                 <Stepper value={units} onChange={setUnits} min={1} max={rem} step={5} unit="uds" />
               </div>
               <span className="pb-1 font-mono text-[11px] tabular text-mut">
-                disponibles: {fmtNum(rem)} / {fmtNum(orderUnits(sel))}
+                disponibles: {fmtNum(rem)} / {fmtNum(sel.totalUnits)}
               </span>
             </div>
           )}
@@ -609,4 +554,10 @@ export function ConfirmModal({
       </div>
     </Modal>
   );
+}
+
+export function despachoBody(order: Order): string {
+  return `¿Estás seguro de que ya finalizó el pedido ${order.code} (${order.product} · ${fmtNum(
+    order.totalUnits
+  )} uds)? El pedido desaparecerá del listado del backlog, pero permanecerá visible en el calendario como ${STATUS_META.despacho.label}.`;
 }

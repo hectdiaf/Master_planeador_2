@@ -1,12 +1,17 @@
-import {
-  CalendarCheck2,
-  ChevronLeft,
-  ChevronRight,
-  FilterX,
-  Plus,
-} from "lucide-react";
-import type { ChunkStatus, Filters } from "../types";
-import { FLOW, STATUS_META } from "../types";
+import { CalendarClock, ChevronLeft, ChevronRight, FilterX, Plus } from "lucide-react";
+import type { Filters, Order, OrderStatus } from "../types";
+import { STATUS_FLOW, STATUS_META } from "../types";
+import { btnPrimary } from "./ui";
+
+const STATUS_OPTIONS: OrderStatus[] = [
+  "revision",
+  "reacondicionamiento",
+  "qa",
+  "empaque",
+  "despacho",
+  "bloqueado",
+  "backlog",
+];
 
 function Select({
   value,
@@ -19,12 +24,15 @@ function Select({
   options: string[];
   all: string;
 }) {
+  const active = value !== "all";
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={`h-8 rounded-md border bg-panel px-2 text-[12px] font-medium outline-none transition focus:border-accent ${
-        value === "all" ? "border-line text-mut" : "border-accent/50 text-ink"
+      className={`rounded-md border px-2 py-1.5 text-[12px] font-medium outline-none transition focus:border-accent ${
+        active
+          ? "border-accent/60 bg-accent/[0.08] text-accent"
+          : "border-line bg-panel text-mut hover:border-line2 hover:text-ink"
       }`}
     >
       <option value="all">{all}</option>
@@ -37,6 +45,9 @@ function Select({
   );
 }
 
+const navBtn =
+  "grid h-8 w-8 place-items-center rounded-md border border-line bg-panel text-mut transition hover:border-line2 hover:bg-raise hover:text-ink active:scale-95";
+
 export function Toolbar({
   rangeLabel,
   isToday,
@@ -45,10 +56,8 @@ export function Toolbar({
   onToday,
   filters,
   setFilters,
-  clients,
-  clientCounts,
-  products,
-  onClearFilters,
+  orders,
+  hiddenFinalized,
   onNewOrder,
 }: {
   rangeLabel: string;
@@ -58,151 +67,141 @@ export function Toolbar({
   onToday: () => void;
   filters: Filters;
   setFilters: (f: Filters) => void;
-  clients: string[];
-  clientCounts: Record<string, number>;
-  products: string[];
-  onClearFilters: () => void;
+  orders: Order[]; // activos (sin archivados)
+  hiddenFinalized: number;
   onNewOrder: () => void;
 }) {
-  const statusOptions: ChunkStatus[] = [...FLOW, "bloqueado"];
-  const active =
-    (filters.client !== "all" ? 1 : 0) +
-    (filters.status !== "all" ? 1 : 0) +
-    (filters.product !== "all" ? 1 : 0);
+  const clients = [...new Set(orders.map((o) => o.client))].sort();
+  const products = [...new Set(orders.map((o) => o.product))].sort();
+  const counts = clients.map((c) => ({
+    client: c,
+    n: orders.filter((o) => o.client === c).length,
+  }));
+  const hasFilters =
+    filters.client !== "all" || filters.status !== "all" || filters.product !== "all";
 
   return (
-    <div className="flex flex-col gap-2 border-b border-line bg-panel/60 px-4 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center overflow-hidden rounded-md border border-line">
-          <button
-            onClick={onPrev}
-            aria-label="Días anteriores"
-            className="grid h-8 w-8 place-items-center bg-panel text-mut transition hover:bg-raise hover:text-ink"
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <button
-            onClick={onToday}
-            className={`flex h-8 items-center gap-1.5 border-x border-line px-3 text-[12px] font-semibold transition ${
-              isToday
-                ? "bg-accent text-white dark:text-[#0d1512]"
-                : "bg-panel text-ink hover:bg-raise"
-            }`}
-          >
-            <CalendarCheck2 size={13} />
-            Hoy
-          </button>
-          <button
-            onClick={onNext}
-            aria-label="Días siguientes"
-            className="grid h-8 w-8 place-items-center bg-panel text-mut transition hover:bg-raise hover:text-ink"
-          >
-            <ChevronRight size={15} />
-          </button>
-        </div>
-
-        <span className="font-mono text-[11.5px] uppercase tracking-wide text-mut">
+    <div className="shrink-0 border-b border-line bg-panel/60">
+      {/* fila 1: navegación de días */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line/70 px-3 py-2">
+        <button onClick={onPrev} className={navBtn} title="Día anterior" aria-label="Día anterior">
+          <ChevronLeft size={15} />
+        </button>
+        <button onClick={onNext} className={navBtn} title="Día siguiente" aria-label="Día siguiente">
+          <ChevronRight size={15} />
+        </button>
+        <button
+          onClick={onToday}
+          className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition active:scale-[0.97] ${
+            isToday
+              ? "border-accent/60 bg-accent/12 text-accent"
+              : "border-line bg-panel text-mut hover:border-line2 hover:text-ink"
+          }`}
+        >
+          <CalendarClock size={13} />
+          Hoy
+        </button>
+        <span className="ml-1 font-mono text-[12px] uppercase tracking-wider text-mut">
           {rangeLabel}
+          {hiddenFinalized > 0 && (
+            <span className="ml-2 text-faint">
+              · {hiddenFinalized} finalizado{hiddenFinalized > 1 ? "s" : ""} en calendario
+            </span>
+          )}
         </span>
 
-        <div className="mx-1 h-5 w-px bg-line" />
+        <button onClick={onNewOrder} className={btnPrimary + " ml-auto"}>
+          <Plus size={14} />
+          Nuevo pedido
+        </button>
+      </div>
 
+      {/* fila 2: filtros + conteo por canal */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line/70 px-3 py-2">
         <Select
           value={filters.client}
           onChange={(v) => setFilters({ ...filters, client: v })}
           options={clients}
           all="Cliente / Canal: todos"
         />
-        <select
+        <Select
           value={filters.status}
-          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-          className={`h-8 rounded-md border bg-panel px-2 text-[12px] font-medium outline-none transition focus:border-accent ${
-            filters.status === "all" ? "border-line text-mut" : "border-accent/50 text-ink"
-          }`}
-        >
-          <option value="all">Estado tarjeta: todos</option>
-          {statusOptions.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_META[s].label}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setFilters({ ...filters, status: v })}
+          options={STATUS_OPTIONS}
+          all="Estado: todos"
+        />
         <Select
           value={filters.product}
           onChange={(v) => setFilters({ ...filters, product: v })}
           options={products}
           all="Producto: todos"
         />
-
-        {active > 0 && (
+        {hasFilters && (
           <button
-            onClick={onClearFilters}
-            className="flex h-8 items-center gap-1 rounded-md border border-line px-2 text-[11.5px] font-medium text-mut transition hover:border-danger/40 hover:text-danger"
+            onClick={() => setFilters({ client: "all", status: "all", product: "all" })}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[11.5px] font-semibold text-danger transition hover:bg-danger/10"
           >
-            <FilterX size={13} />
-            Limpiar ({active})
+            <FilterX size={12} />
+            Limpiar
           </button>
         )}
 
-        <button
-          onClick={onNewOrder}
-          className="ml-auto flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[12.5px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.98] dark:text-[#0d1512]"
-        >
-          <Plus size={14} />
-          Nuevo pedido
-        </button>
+        <span className="mx-1 hidden h-4 w-px bg-line sm:block" />
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+            Pedidos por canal
+          </span>
+          {counts.map(({ client, n }) => {
+            const active = filters.client === client;
+            return (
+              <button
+                key={client}
+                onClick={() =>
+                  setFilters({ ...filters, client: active ? "all" : client })
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-[3px] text-[11px] font-medium transition active:scale-[0.97] ${
+                  active
+                    ? "border-accent/60 bg-accent/12 text-accent"
+                    : "border-line bg-panel text-mut hover:border-line2 hover:text-ink"
+                }`}
+              >
+                {client}
+                <span className="rounded-full bg-raise px-1.5 font-mono text-[10px] font-bold tabular">
+                  {n}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-faint">
-          Pedidos por cliente
-        </span>
-        {clients.map((c) => {
-          const on = filters.client === c;
-          return (
-            <button
-              key={c}
-              onClick={() =>
-                setFilters({ ...filters, client: on ? "all" : c })
-              }
-              className={`flex items-center gap-1.5 rounded-full border px-2 py-[2px] text-[11px] font-medium transition ${
-                on
-                  ? "border-accent/60 bg-accent/10 text-accent"
-                  : "border-line bg-panel text-mut hover:border-line2 hover:text-ink"
-              }`}
-            >
-              {c}
-              <span className="font-mono font-semibold tabular">
-                {clientCounts[c] ?? 0}
-              </span>
-            </button>
-          );
-        })}
-
-        <span className="mx-1 h-4 w-px bg-line" />
-        <span className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-faint">
+      {/* fila 3: leyenda */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
           Leyenda
         </span>
-        {statusOptions.map((s) => (
-          <span
-            key={s}
-            className="flex items-center gap-1 text-[11px] text-mut"
-            title={STATUS_META[s].label}
-          >
+        {[...STATUS_FLOW, "bloqueado" as OrderStatus].map((s) => (
+          <span key={s} className="flex items-center gap-1.5 text-[11px] text-mut">
             <span
               className="h-2 w-2 rounded-full"
               style={{ background: STATUS_META[s].hex }}
             />
-            {STATUS_META[s].short}
+            {STATUS_META[s].label}
           </span>
         ))}
-        <span className="flex items-center gap-1 text-[11px] text-mut">
-          <span className="inline-flex h-2 w-8 overflow-hidden rounded-sm">
-            <span className="h-full flex-1" style={{ background: "var(--sf-ok)" }} />
-            <span className="h-full flex-1" style={{ background: "var(--sf-warn)" }} />
-            <span className="h-full flex-1" style={{ background: "var(--sf-danger)" }} />
-          </span>
-          Ocupación &lt;85 / ≤100 / &gt;100%
+        <span className="mx-1 hidden h-4 w-px bg-line sm:block" />
+        <span className="flex items-center gap-1.5 text-[11px] text-mut">
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--sf-ok)" }} />
+          &lt;85% holgada
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-mut">
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--sf-warn)" }} />
+          85–100% ajustada
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-mut">
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--sf-danger)" }} />
+          &gt;100% sobrecarga
         </span>
       </div>
     </div>

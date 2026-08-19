@@ -1,150 +1,164 @@
-import type {
-  Channel,
-  Chunk,
-  ChunkStatus,
-  DayConfig,
+import type { Chunk, DayConfig, Order, OrderStatus } from "./types";
+import { uid } from "./types";
+import { businessDaysFrom, shiftDays, todayISO } from "./lib";
+
+const base: DayConfig = { techs: 10, qa: 5, opMin: 480, stopMin: 45 };
+const D = businessDaysFrom(todayISO(), 10);
+const now = new Date().toISOString();
+const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
+const mkLog = (text: string, at = now) => ({ id: uid(), text, at, auto: true });
+
+type Base = Pick<
   Order,
-  OrderItem,
-  Product,
-} from "./types";
-import { DEFAULT_DAY } from "./types";
-import { ensureBiz, shiftBiz, todayISO } from "./lib";
+  | "product"
+  | "client"
+  | "channel"
+  | "subchannel"
+  | "category"
+  | "color"
+  | "totalUnits"
+  | "requestDate"
+  | "deliveryDate"
+>;
 
-export const PRODUCTS: Product[] = [
-  { id: "p01", name: "iPhone 11 64GB" },
-  { id: "p02", name: "iPhone 12 64GB" },
-  { id: "p03", name: "iPhone 13 128GB" },
-  { id: "p04", name: "iPhone XR 64GB" },
-  { id: "p05", name: "iPhone SE 2022 64GB" },
-  { id: "p06", name: "Galaxy S21 128GB" },
-  { id: "p07", name: "Galaxy S22 128GB" },
-  { id: "p08", name: "Galaxy A32 64GB" },
-  { id: "p09", name: "Galaxy A54 128GB" },
-  { id: "p10", name: "Redmi Note 11 128GB" },
-  { id: "p11", name: "Redmi 9A 32GB" },
-  { id: "p12", name: "Moto G60 128GB" },
-  { id: "p13", name: "Tecno Spark 20 128GB" },
-  { id: "p14", name: "Tecno Camon 30 256GB" },
-];
+function mkOrder(
+  code: string,
+  b: Base,
+  status: OrderStatus,
+  progress: number,
+  extra: Partial<Order> = {}
+): Order {
+  return {
+    id: uid(),
+    code,
+    status,
+    progress,
+    logs: [mkLog("Pedido creado e importado al plan.")],
+    createdAt: ago(6),
+    updatedAt: now,
+    ...b,
+    ...extra,
+  };
+}
 
-export const productName = (id: string): string =>
-  PRODUCTS.find((p) => p.id === id)?.name ?? "Referencia";
+const C = (o: Order, date: string, units: number): Chunk => ({
+  id: uid(),
+  orderId: o.id,
+  date,
+  units,
+  createdAt: now,
+});
 
-export interface SeedState {
+export function makeSeed(): {
   orders: Order[];
   chunks: Chunk[];
   dayConfigs: Record<string, DayConfig>;
-}
+} {
+  const o1 = mkOrder(
+    "PED-2401",
+    { product: "iPhone 12 64GB", client: "Claro Colombia", channel: "Operador", subchannel: "Postpago", category: "Premium", color: "teal", totalUnits: 200, requestDate: shiftDays(D[0], -6), deliveryDate: shiftDays(D[0], 7) },
+    "reacondicionamiento",
+    60
+  );
+  const o2 = mkOrder(
+    "PED-2402",
+    { product: "Galaxy S21 128GB", client: "Movistar", channel: "Operador", subchannel: "Prepago", category: "Gama Media", color: "sky", totalUnits: 150, requestDate: shiftDays(D[0], -5), deliveryDate: shiftDays(D[0], 8) },
+    "qa",
+    35
+  );
+  const o3 = mkOrder(
+    "PED-2403",
+    { product: "iPhone 11 64GB", client: "Falabella", channel: "Retail", subchannel: "Tienda física", category: "Premium", color: "amber", totalUnits: 120, requestDate: shiftDays(D[0], -8), deliveryDate: shiftDays(D[0], 4) },
+    "empaque",
+    80
+  );
+  const o4 = mkOrder(
+    "PED-2404",
+    { product: "Redmi Note 11", client: "Mercado Libre", channel: "Marketplace", subchannel: "Full", category: "Gama Entrada", color: "orange", totalUnits: 300, requestDate: shiftDays(D[0], -4), deliveryDate: shiftDays(D[0], 10) },
+    "revision",
+    15
+  );
+  const o5 = mkOrder(
+    "PED-2405",
+    { product: "Galaxy A32", client: "Éxito", channel: "Retail", subchannel: "Online", category: "Gama Media", color: "rose", totalUnits: 90, requestDate: shiftDays(D[0], -2), deliveryDate: shiftDays(D[0], 12) },
+    "backlog",
+    0
+  );
+  const o6 = mkOrder(
+    "PED-2406",
+    { product: "iPhone XR 64GB", client: "Distrib. Andina", channel: "Mayorista", subchannel: "Regional", category: "Outlet", color: "lime", totalUnits: 250, requestDate: shiftDays(D[0], -7), deliveryDate: shiftDays(D[0], 9) },
+    "reacondicionamiento",
+    45
+  );
+  const o7 = mkOrder(
+    "PED-2407",
+    { product: "Moto G60", client: "Claro Colombia", channel: "Operador", subchannel: "Corporativo", category: "Gama Media", color: "cyan", totalUnits: 180, requestDate: shiftDays(D[0], -12), deliveryDate: shiftDays(D[0], 1) },
+    "despacho",
+    100,
+    { archived: true }
+  );
+  const o8 = mkOrder(
+    "PED-2408",
+    { product: "iPhone 13 128GB", client: "Falabella", channel: "Retail", subchannel: "Marketplace propio", category: "Premium", color: "teal", totalUnits: 60, requestDate: shiftDays(D[0], -3), deliveryDate: shiftDays(D[0], 11) },
+    "revision",
+    10
+  );
+  const o9 = mkOrder(
+    "PED-2409",
+    { product: "Galaxy S20 FE", client: "Movistar", channel: "Operador", subchannel: "Postpago", category: "Premium", color: "sky", totalUnits: 140, requestDate: shiftDays(D[0], -9), deliveryDate: shiftDays(D[0], 6) },
+    "bloqueado",
+    50,
+    {
+      prevStatus: "reacondicionamiento",
+      blockReason: "Falta de repuestos",
+      blockedAt: ago(1),
+    }
+  );
+  const o10 = mkOrder(
+    "PED-2410",
+    { product: "Redmi 9A", client: "Alkosto", channel: "Retail", subchannel: "Tienda física", category: "Gama Entrada", color: "amber", totalUnits: 400, requestDate: shiftDays(D[0], -5), deliveryDate: shiftDays(D[0], 13) },
+    "reacondicionamiento",
+    25
+  );
+  const o11 = mkOrder(
+    "PED-2411",
+    { product: "iPhone SE 2020", client: "Mercado Libre", channel: "Marketplace", subchannel: "Clásico", category: "Gama Media", color: "orange", totalUnits: 75, requestDate: shiftDays(D[0], -1), deliveryDate: shiftDays(D[0], 14) },
+    "backlog",
+    0
+  );
+  const o12 = mkOrder(
+    "PED-2412",
+    { product: "Galaxy A54", client: "Distrib. Andina", channel: "Mayorista", subchannel: "Nacional", category: "Gama Media", color: "rose", totalUnits: 160, requestDate: shiftDays(D[0], -1), deliveryDate: shiftDays(D[0], 15) },
+    "backlog",
+    0
+  );
 
-export function seedState(): SeedState {
-  const today = ensureBiz(todayISO());
-  /** día laborable relativo a hoy (−3…+5) */
-  const d = (n: number) => shiftBiz(today, n);
-  const ts = (hoursAgo: number) =>
-    new Date(Date.now() - hoursAgo * 3600_000).toISOString();
-
-  let oc = 0;
-  const mkOrder = (
-    code: string,
-    client: string,
-    channel: Channel,
-    reqOffset: number,
-    delOffset: number,
-    items: OrderItem[],
-    colorIdx: number,
-    logs: Order["logs"] = []
-  ): Order => ({
-    id: `o${++oc}`,
-    code,
-    client,
-    channel,
-    requestDate: d(reqOffset),
-    deliveryDate: d(delOffset),
-    items,
-    colorIdx,
-    logs,
-    createdAt: ts(72 + oc * 5),
-    updatedAt: ts(2 + oc),
-  });
-
-  const orders: Order[] = [
-    mkOrder("PED-101", "Claro Colombia", "Retail", -6, 5, [{ productId: "p02", qty: 200 }], 0, [
-      { id: "l1", text: "Lote recibido en planta, 200 uds verificadas en recepción.", at: ts(70), auto: true },
-      { id: "l2", text: "Cliente solicita priorizar unidades con pantalla original.", at: ts(30) },
-    ]),
-    mkOrder("PED-102", "Falabella", "Ecommerce", -5, 6, [{ productId: "p06", qty: 150 }], 1),
-    mkOrder("PED-103", "Tigo", "Retail", -4, 7, [{ productId: "p10", qty: 120 }], 2),
-    mkOrder("PED-104", "Almacenes Éxito", "Retail", -4, 8, [
-      { productId: "p01", qty: 80 },
-      { productId: "p08", qty: 40 },
-    ], 3),
-    mkOrder("PED-105", "WOM", "Open Market", -3, 4, [{ productId: "p12", qty: 100 }], 4, [
-      { id: "l3", text: "40 uds detenidas: falla de cámara detectada en QA.", at: ts(20), auto: true },
-    ]),
-    mkOrder("PED-106", "Alkosto", "Open Market", -7, 9, [
-      { productId: "p13", qty: 120 },
-      { productId: "p14", qty: 80 },
-    ], 5),
-    mkOrder("PED-107", "MercadoLibre", "Ecommerce", -9, -1, [{ productId: "p04", qty: 90 }], 6, [
-      { id: "l4", text: "90 uds despachadas — entregado al transportador.", at: ts(26), auto: true },
-    ]),
-    mkOrder("PED-108", "Movistar", "Retail", -2, 9, [{ productId: "p07", qty: 60 }], 7),
-    mkOrder("PED-109", "Claro Colombia", "Tiendas propias", -2, 10, [{ productId: "p05", qty: 45 }], 1),
-    mkOrder("PED-110", "Almacenes Éxito", "SAC", -1, 11, [{ productId: "p11", qty: 150 }], 2),
-    mkOrder("PED-111", "Falabella", "Ecommerce", -1, 12, [{ productId: "p09", qty: 70 }], 3),
-    mkOrder("PED-112", "Tigo", "Otros", 0, 13, [{ productId: "p03", qty: 110 }], 4),
-  ];
-
-  let cc = 0;
-  const mkChunk = (
-    orderId: string,
-    date: string,
-    units: number,
-    status: ChunkStatus,
-    extra?: Partial<Chunk>
-  ): Chunk => ({
-    id: `c${++cc}`,
-    orderId,
-    date,
-    units,
-    status,
-    createdAt: ts(48 - cc),
-    ...extra,
-  });
+  const orders = [o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12];
 
   const chunks: Chunk[] = [
-    // PED-101 · 200 uds → 60 en QA (avance 30%), 70 en reacond., 70 sin agendar
-    mkChunk("o1", d(-1), 60, "qa"),
-    mkChunk("o1", d(0), 70, "reacondicionamiento"),
-    // PED-102 · 150 uds → 60 QA (40%), 60 empaque
-    mkChunk("o2", d(0), 60, "qa"),
-    mkChunk("o2", d(1), 60, "empaque"),
-    // PED-103 · 120 uds en primera revisión (día de crunch)
-    mkChunk("o3", d(4), 120, "revision"),
-    // PED-104 · 120 uds → 40 reac / 30 QA (25%) / 30 empaque
-    mkChunk("o4", d(-1), 40, "reacondicionamiento"),
-    mkChunk("o4", d(2), 30, "qa"),
-    mkChunk("o4", d(3), 30, "empaque"),
-    // PED-105 · 100 uds → 40 bloqueadas por falla en QA + 60 en reacond.
-    mkChunk("o5", d(-2), 40, "bloqueado", {
-      prevStatus: "qa",
-      blockReason: "Falla en QA",
-      blockedAt: ts(20),
-    }),
-    mkChunk("o5", d(1), 60, "reacondicionamiento"),
-    // PED-106 · 200 uds → 50 despacho / 50 empaque / 50 QA (25%) / 50 revisión
-    mkChunk("o6", d(-2), 50, "despacho"),
-    mkChunk("o6", d(2), 50, "qa"),
-    mkChunk("o6", d(3), 50, "empaque"),
-    mkChunk("o6", d(4), 50, "revision"),
-    // PED-107 · 90 uds despachadas (permanece en calendario)
-    mkChunk("o7", d(-3), 90, "despacho"),
+    C(o1, D[0], 50),
+    C(o1, D[1], 50),
+    C(o1, D[2], 50),
+    C(o2, D[1], 60),
+    C(o2, D[3], 40),
+    C(o3, D[0], 100),
+    C(o4, D[2], 120),
+    C(o4, D[4], 80),
+    C(o6, D[1], 90),
+    C(o6, D[4], 60),
+    C(o7, D[0], 180),
+    C(o8, D[3], 40),
+    C(o9, D[2], 70),
+    C(o9, D[5], 40),
+    C(o10, D[5], 100),
+    C(o10, D[6], 100),
   ];
 
   const dayConfigs: Record<string, DayConfig> = {};
-  for (let i = -4; i <= 9; i++) dayConfigs[d(i)] = { ...DEFAULT_DAY };
-  // Día de crunch: capacidad reducida para evidenciar sobrecarga
-  dayConfigs[d(4)] = { tecnicos: 6, qa: 3, minutos: 510, paradas: 50 };
+  for (const d of D) dayConfigs[d] = { ...base };
+  dayConfigs[D[0]] = { techs: 20, qa: 7, opMin: 480, stopMin: 30 };
+  dayConfigs[D[1]] = { techs: 18, qa: 6, opMin: 480, stopMin: 45 };
+  dayConfigs[D[2]] = { techs: 16, qa: 5, opMin: 480, stopMin: 50 };
 
   return { orders, chunks, dayConfigs };
 }

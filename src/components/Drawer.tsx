@@ -2,28 +2,20 @@ import { useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
-  ChevronRight,
-  Inbox,
-  ListChecks,
+  Check,
   Pencil,
   Send,
-  Truck,
   X,
 } from "lucide-react";
-import type { Api } from "../store";
-import type { Chunk, ChunkStatus, Order } from "../types";
-import { FLOW, STATUS_META, accentOf } from "../types";
+import type { Chunk, Order, OrderStatus } from "../types";
 import {
-  chunksOf,
-  fmtDateTime,
-  fmtMedium,
-  fmtNum,
-  orderAssigned,
-  orderProgress,
-  orderRemaining,
-  orderUnits,
-  unitsByStatus,
-} from "../lib";
+  FLOW_LABELS,
+  ORDER_COLORS,
+  STATUS_FLOW,
+  STATUS_META,
+} from "../types";
+import { fmtDateTime, fmtMedium, fmtNum } from "../lib";
+import type { PlannerApi } from "../store";
 import { Badge } from "./ui";
 
 function Detail({ k, v }: { k: string; v: string }) {
@@ -41,54 +33,26 @@ export function Drawer({
   order,
   chunks,
   api,
-  productName,
-  focusChunkId,
-  onFocusChunk,
-  highlight,
-  onHighlight,
   onClose,
   onEditOrder,
-  onBlockChunk,
-  onUnblockChunk,
+  onBlockOrder,
+  onDespacho,
   notify,
 }: {
   order: Order;
   chunks: Chunk[];
-  api: Api;
-  productName: (id: string) => string;
-  focusChunkId: string | null;
-  onFocusChunk: (id: string | null) => void;
-  highlight: { orderId: string; status: ChunkStatus | "sinAgendar" } | null;
-  onHighlight: (status: ChunkStatus | "sinAgendar" | null) => void;
+  api: PlannerApi;
   onClose: () => void;
   onEditOrder: (id: string) => void;
-  onBlockChunk: (id: string) => void;
-  onUnblockChunk: (id: string) => void;
+  onBlockOrder: (id: string) => void;
+  onDespacho: (id: string) => void;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
 }) {
   const [note, setNote] = useState("");
-  const total = orderUnits(order);
-  const assigned = orderAssigned(chunks, order.id);
-  const remaining = orderRemaining(order, chunks);
-  const progress = orderProgress(order, chunks);
-  const qaUnits = unitsByStatus(order, chunks).qa;
-  const own = chunksOf(chunks, order.id).sort((a, b) =>
-    a.date.localeCompare(b.date)
-  );
-  const accent = accentOf(order.colorIdx);
-  const focus = focusChunkId ? own.find((c) => c.id === focusChunkId) ?? null : null;
-  const blockedChunks = own.filter((c) => c.status === "bloqueado");
-  const desglose = unitsByStatus(order, chunks);
-
-  const rows: { key: ChunkStatus | "sinAgendar"; label: string; units: number; hex: string }[] = [
-    ...FLOW.map((s) => ({
-      key: s as ChunkStatus | "sinAgendar",
-      label: STATUS_META[s].label,
-      units: desglose[s],
-      hex: STATUS_META[s].hex,
-    })),
-    { key: "sinAgendar", label: "Sin agendar (backlog)", units: desglose.sinAgendar, hex: "#8b95a1" },
-  ];
+  const accent = ORDER_COLORS[order.color];
+  const blocked = order.status === "bloqueado";
+  const curIdx = STATUS_FLOW.indexOf(order.status);
+  const assigned = chunks.reduce((a, c) => a + c.units, 0);
 
   const submitNote = () => {
     const t = note.trim();
@@ -99,22 +63,20 @@ export function Drawer({
   };
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-panel animate-slide-r">
+    <aside className="flex w-[350px] shrink-0 flex-col border-l border-line bg-panel animate-slide-r">
       {/* header */}
       <div className="flex items-start gap-2.5 border-b border-line px-4 py-3">
-        <span className="mt-1 h-8 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
+        <span className="mt-1 h-9 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="font-display text-[17px] font-bold uppercase leading-tight tracking-wide">
               {order.code}
             </h2>
-            <span className="rounded-full border border-line px-1.5 py-[1px] text-[10px] font-medium text-mut">
-              {order.channel}
-            </span>
+            <Badge status={order.status} size="sm" />
           </div>
-          <p className="truncate text-[13px] font-semibold text-mut">{order.client}</p>
-          <p className="mt-0.5 truncate text-[11px] text-faint">
-            {order.items.map((i) => `${productName(i.productId)} ×${i.qty}`).join(" · ")}
+          <p className="truncate text-[13.5px] font-semibold">{order.product}</p>
+          <p className="mt-0.5 truncate text-[11px] text-mut">
+            {order.client} · {order.channel} · {order.category}
           </p>
         </div>
         <button
@@ -127,42 +89,32 @@ export function Drawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* alerta de bloqueo */}
-        {focus && focus.status === "bloqueado" ? (
-          <div className="mx-4 mt-3 rounded-lg border border-danger/40 bg-danger/[0.07] p-3">
+        {/* banner de bloqueo */}
+        {blocked && (
+          <div className="mx-4 mt-3 rounded-lg border border-danger/45 bg-danger/[0.07] p-3">
             <div className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-danger">
               <AlertTriangle size={13} />
-              Tarjeta bloqueada
+              Pedido bloqueado / en pausa
             </div>
             <p className="mt-1 text-[12.5px] font-medium leading-snug">
-              Motivo: {focus.blockReason || "—"}
+              Motivo: {order.blockReason || "—"}
             </p>
-            <p className="mt-0.5 font-mono text-[10.5px] tabular text-danger/80">
-              {focus.blockedAt ? fmtDateTime(focus.blockedAt) : ""} · {fmtMedium(focus.date)} ·{" "}
-              {focus.units} uds
-            </p>
+            {order.blockedAt && (
+              <p className="mt-0.5 font-mono text-[10.5px] tabular text-danger/80">
+                {fmtDateTime(order.blockedAt)}
+              </p>
+            )}
             <button
-              onClick={() => onUnblockChunk(focus.id)}
+              onClick={() => {
+                api.unblockOrder(order.id);
+                notify("Bloqueo liberado.", "ok");
+              }}
               className="mt-2 rounded-md border border-ok/40 bg-ok/10 px-2.5 py-1 text-[11.5px] font-semibold text-ok transition hover:bg-ok/20"
             >
               Liberar bloqueo
             </button>
           </div>
-        ) : blockedChunks.length > 0 ? (
-          <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-warn/40 bg-warn/[0.08] px-3 py-2">
-            <AlertTriangle size={14} className="shrink-0 text-warn" />
-            <p className="min-w-0 flex-1 text-[11.5px] font-medium leading-snug">
-              {blockedChunks.reduce((a, c) => a + c.units, 0)} uds bloqueadas (
-              {blockedChunks.map((c) => c.blockReason ?? "motivo").join(", ")}).
-            </p>
-            <button
-              onClick={() => onFocusChunk(blockedChunks[0].id)}
-              className="shrink-0 text-[11px] font-bold text-warn underline-offset-2 hover:underline"
-            >
-              Ver
-            </button>
-          </div>
-        ) : null}
+        )}
 
         {/* detalles generales */}
         <section className="px-4 pt-3">
@@ -172,147 +124,134 @@ export function Drawer({
           <div className="mt-1 divide-y divide-line/70 rounded-lg border border-line bg-raise/50 px-3">
             <Detail k="Cliente" v={order.client} />
             <Detail k="Canal" v={order.channel} />
+            <Detail k="Subcanal" v={order.subchannel || "—"} />
             <Detail k="F. solicitud" v={fmtMedium(order.requestDate)} />
             <Detail k="F. entrega tent." v={fmtMedium(order.deliveryDate)} />
-            <Detail k="Unidades totales" v={`${fmtNum(total)} uds (${order.items.length} ref.)`} />
-          </div>
-
-          {/* desglose por proceso */}
-          <div className="mt-2.5 rounded-lg border border-line bg-raise/50 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
-                Unidades por proceso
-              </span>
-              <span className="font-mono text-[10.5px] tabular text-mut">
-                {fmtNum(assigned)} / {fmtNum(total)} agendadas
-              </span>
-            </div>
-            <div className="mt-2 flex flex-col gap-1.5">
-              {rows
-                .filter((r) => r.units > 0)
-                .map((r) => (
-                  <div key={r.key} className="flex items-center gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.hex }} />
-                    <span className="min-w-0 flex-1 truncate text-[11.5px] text-mut">{r.label}</span>
-                    <div className="h-[5px] w-16 overflow-hidden rounded-full bg-paper">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${(r.units / total) * 100}%`, background: r.hex }}
-                      />
-                    </div>
-                    <span className="w-10 text-right font-mono text-[11px] font-semibold tabular">
-                      {fmtNum(r.units)}
-                    </span>
-                  </div>
-                ))}
-            </div>
+            <Detail
+              k="Unidades"
+              v={`${fmtNum(assigned)} agendadas / ${fmtNum(order.totalUnits)} totales`}
+            />
           </div>
         </section>
 
         {/* avance */}
         <section className="px-4 pt-3">
           <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
-            Avance general
+            Resumen de avance
           </h3>
           <div className="mt-1.5 rounded-lg border border-line bg-raise/50 p-3">
             <div className="flex items-baseline justify-between">
               <span className="font-display text-[26px] font-bold leading-none tabular text-accent">
-                {progress}%
+                {Math.round(order.progress)}%
               </span>
-              <span className="font-mono text-[10.5px] tabular text-mut">
-                {fmtNum(qaUnits)} uds en QA / {fmtNum(total)}
-              </span>
+              <span className="font-mono text-[10.5px] tabular text-mut">completado</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-paper">
               <div
                 className="h-full rounded-full bg-accent transition-all duration-500"
-                style={{ width: `${progress}%` }}
+                style={{ width: `${order.progress}%` }}
               />
             </div>
-            <p className="mt-1.5 text-[10px] leading-snug text-faint">
-              Calculado automáticamente: unidades en Control de Calidad ÷ unidades
-              totales del pedido.
-            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                Ajuste rápido
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={order.progress}
+                disabled={order.archived}
+                onChange={(e) =>
+                  api.updateOrder(order.id, { progress: Number(e.target.value) }, `Avance actualizado a ${e.target.value}%.`)
+                }
+                className="w-full disabled:opacity-40"
+              />
+            </div>
           </div>
         </section>
 
-        {/* flujo / checklist */}
+        {/* checklist del flujo */}
         <section className="px-4 pt-3">
-          <h3 className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
-            <ListChecks size={12} />
-            Flujo operativo · clic para resaltar en tablero
+          <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
+            Checklist del flujo operativo
           </h3>
+          {blocked && (
+            <p className="mt-1 text-[10.5px] font-medium text-danger">
+              Flujo congelado mientras el pedido esté bloqueado.
+            </p>
+          )}
           <div className="mt-1.5 flex flex-col gap-1">
-            {rows.map((r, i) => {
-              const active = highlight && highlight.orderId === order.id && highlight.status === r.key;
-              const isLast = i === rows.length - 1;
+            {STATUS_FLOW.map((s, i) => {
+              const done = order.status === "despacho" ? true : i < curIdx;
+              const current = !blocked && i === curIdx && order.status !== "despacho";
+              const hex = STATUS_META[s].hex;
               return (
                 <button
-                  key={r.key}
-                  onClick={() => onHighlight(active ? null : r.key)}
-                  className={`group flex items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition ${
-                    active
+                  key={s}
+                  disabled={blocked}
+                  onClick={() => {
+                    if (s === "despacho") {
+                      onDespacho(order.id);
+                    } else if (s !== order.status) {
+                      api.setStatus(order.id, s);
+                      notify(`Estado → ${STATUS_META[s].label}`);
+                    }
+                  }}
+                  className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition ${
+                    current
                       ? "border-accent/60 bg-accent/[0.07]"
                       : "border-transparent hover:border-line hover:bg-raise"
-                  }`}
+                  } ${blocked ? "cursor-not-allowed opacity-60" : ""}`}
                 >
                   <span
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10.5px] font-bold"
+                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[11px] font-bold ${
+                      current ? "animate-ping-dot" : ""
+                    }`}
                     style={{
-                      borderColor: r.units > 0 ? r.hex : "var(--sf-line)",
-                      color: r.units > 0 ? r.hex : "var(--sf-faint)",
-                      background: r.units > 0 ? `color-mix(in srgb, ${r.hex} 12%, transparent)` : "transparent",
+                      borderColor: done || current ? hex : "var(--sf-line)",
+                      color: done || current ? hex : "var(--sf-faint)",
+                      background:
+                        done || current
+                          ? `color-mix(in srgb, ${hex} 12%, transparent)`
+                          : "transparent",
                     }}
                   >
-                    {isLast ? <Inbox size={11} /> : i + 1}
+                    {done ? <Check size={12} /> : i + 1}
                   </span>
-                  <span className={`min-w-0 flex-1 truncate text-[12.5px] font-medium ${r.units > 0 ? "" : "text-faint"}`}>
-                    {r.label}
+                  <span className={`min-w-0 flex-1 truncate text-[12.5px] font-medium ${done || current ? "" : "text-faint"}`}>
+                    {FLOW_LABELS[s]}
                   </span>
-                  <span className="font-mono text-[11.5px] font-semibold tabular" style={{ color: r.units > 0 ? r.hex : "var(--sf-faint)" }}>
-                    {fmtNum(r.units)} uds
-                  </span>
-                  <ChevronRight
-                    size={12}
-                    className={`text-faint transition ${active ? "rotate-90 text-accent" : ""}`}
-                  />
+                  {current && (
+                    <span className="rounded-full bg-accent/15 px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider text-accent">
+                      Actual
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
         </section>
 
-        {/* tarjetas del pedido */}
+        {/* tarjetas en calendario */}
         <section className="px-4 pt-3">
           <h3 className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">
-            Tarjetas en calendario ({own.length})
+            Asignaciones en calendario ({chunks.length})
           </h3>
-          {own.length === 0 ? (
+          {chunks.length === 0 ? (
             <p className="mt-1.5 rounded-lg border border-dashed border-line px-3 py-2.5 text-[11.5px] text-faint">
-              Aún no hay unidades agendadas — arrastra el pedido desde el backlog a
-              un día del tablero.
+              Sin unidades agendadas — arrastra el pedido desde el backlog al tablero.
             </p>
           ) : (
-            <div className="mt-1.5 flex flex-col gap-1">
-              {own.map((c) => (
-                <button
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {chunks.map((c) => (
+                <span
                   key={c.id}
-                  onClick={() => onFocusChunk(focusChunkId === c.id ? null : c.id)}
-                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition ${
-                    focusChunkId === c.id
-                      ? "border-accent/60 bg-accent/[0.07]"
-                      : "border-line bg-raise/40 hover:border-line2 hover:bg-raise"
-                  }`}
+                  className="flex items-center gap-1.5 rounded-md border border-line bg-raise/60 px-2 py-1 font-mono text-[11px] tabular"
                 >
-                  <span className="flex items-center gap-1 font-mono text-[11px] tabular text-mut">
-                    <CalendarDays size={11} />
-                    {fmtMedium(c.date)}
-                  </span>
-                  <span className="font-mono text-[11.5px] font-bold tabular">{c.units} uds</span>
-                  <span className="ml-auto">
-                    <Badge status={c.status} size="sm" />
-                  </span>
-                </button>
+                  <CalendarDays size={11} className="text-faint" />
+                  {fmtMedium(c.date)} · <b>{fmtNum(c.units)} uds</b>
+                </span>
               ))}
             </div>
           )}
@@ -365,18 +304,12 @@ export function Drawer({
         </span>
         <button
           onClick={() => onEditOrder(order.id)}
-          className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-[11.5px] font-semibold text-mut transition hover:border-accent/50 hover:text-accent"
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-[11.5px] font-semibold text-mut transition hover:border-accent/50 hover:text-accent"
         >
           <Pencil size={12} />
-          Editar pedido
+          Editar
         </button>
       </div>
-      {remaining === 0 && assigned > 0 && (
-        <div className="flex items-center gap-1.5 border-t border-line/70 bg-ok/[0.06] px-4 py-1.5 text-[10.5px] font-semibold text-ok">
-          <Truck size={12} />
-          Todas las unidades del pedido están en calendario.
-        </div>
-      )}
     </aside>
   );
 }
