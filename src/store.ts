@@ -26,9 +26,12 @@ export const DEFAULT_DAY_CONFIG: DayConfig = {
 };
 
 /**
- * Horas efectivas del turno: 7:40 → 17:00 = 560 min de jornada,
- * menos 50 min inactivos (30 almuerzo + 20 descanso) = 510 min = 8.5 h.
+ * Turno de referencia: 7:40 → 17:00 = 560 min de jornada, menos 50 min
+ * inactivos (30 almuerzo + 20 descanso) = 510 min = 8.5 h efectivas.
+ * Las tasas de 15 uds/técnico y 45 uds/QA están calibradas para este turno
+ * completo; a menos tiempo efectivo, menos producción (escala lineal).
  */
+export const BASE_SHIFT_MIN = 510;
 export const SHIFT_EFF_HOURS = 8.5;
 
 export interface Capacity {
@@ -36,20 +39,25 @@ export interface Capacity {
   qaCap: number;
   cap: number;
   effMin: number;
-  /** Producción por hora efectiva = C_total / 8.5 */
+  /** Factor de escala del día = minutos efectivos ÷ 510 (turno base). */
+  scale: number;
+  /** Producción por hora efectiva = C_total ÷ horas efectivas del día. */
   pHora: number;
 }
 
 export function capacityOf(cfg: DayConfig): Capacity {
-  const techCap = cfg.techs * TECH_RATE;
-  const qaCap = cfg.qa * QA_RATE;
+  const effMin = Math.max(0, cfg.opMin - cfg.stopMin);
+  const scale = effMin / BASE_SHIFT_MIN;
+  const techCap = Math.round(cfg.techs * TECH_RATE * scale);
+  const qaCap = Math.round(cfg.qa * QA_RATE * scale);
   const cap = Math.min(techCap, qaCap);
   return {
     techCap,
     qaCap,
     cap,
-    effMin: Math.max(0, cfg.opMin - cfg.stopMin),
-    pHora: cap / SHIFT_EFF_HOURS,
+    effMin,
+    scale,
+    pHora: effMin > 0 ? cap / (effMin / 60) : 0,
   };
 }
 

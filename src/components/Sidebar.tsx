@@ -13,7 +13,7 @@ import { useDraggable } from "@dnd-kit/core";
 import type { Chunk, DayConfig, Order } from "../types";
 import { ORDER_COLORS } from "../types";
 import { colDate, fmtNum, orderProgress, pctColor, todayISO } from "../lib";
-import { DEFAULT_DAY_CONFIG, SHIFT_EFF_HOURS, capacityOf, type PlannerApi } from "../store";
+import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
 import { Ring, Stepper, inputCls } from "./ui";
 
 export type Tab = "backlog" | "capacidad";
@@ -368,7 +368,13 @@ export function Sidebar({
 
           <div className="mt-2 rounded-md border border-accent/30 bg-accent/[0.06] px-2.5 py-1.5 text-[10.5px] leading-snug text-mut">
             <span className="font-bold text-accent">Turno 7:40 a. m. – 5:00 p. m.</span>{" "}
-            · 50 min inactivos (30 almuerzo + 20 descanso) → 510 min = 8.5 h efectivas.
+            · base 510 min (8.5 h). Este día:{" "}
+            <span className="font-bold tabular text-ink">{cap.effMin} min efectivos</span>{" "}
+            → la capacidad se escala{" "}
+            <span className={`font-bold tabular ${cap.scale < 1 ? "text-warn" : "text-ok"}`}>
+              ×{(cap.scale * 100).toFixed(0)}%
+            </span>
+            {cap.scale < 1 && " — menos tiempo, menos producción"}.
           </div>
 
           <div className="mt-2 flex flex-col gap-3 rounded-lg border border-line bg-raise/50 p-3">
@@ -418,19 +424,23 @@ export function Sidebar({
             </span>
             <div className="mt-1.5 flex flex-col gap-1 font-mono text-[11.5px] tabular">
               <div className="flex items-center justify-between">
-                <span className="text-mut">C_técnicos = N × 15</span>
+                <span className="text-mut">
+                  C_téc = {cfg.techs} × 15 × {(cap.scale).toFixed(2)}
+                </span>
                 <span className="font-bold">{fmtNum(cap.techCap)} uds</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-mut">C_calidad = N × 45</span>
+                <span className="text-mut">
+                  C_QC = {cfg.qa} × 45 × {cap.scale.toFixed(2)}
+                </span>
                 <span className="font-bold">{fmtNum(cap.qaCap)} uds</span>
               </div>
               <div className="flex items-center justify-between border-t border-line pt-1">
-                <span className="text-mut">C_total = mín(téc, cal)</span>
+                <span className="text-mut">C_total = mín(C_téc, C_QC)</span>
                 <span className="font-bold text-accent">{fmtNum(cap.cap)} uds</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-mut">P_hora = C_total ÷ {SHIFT_EFF_HOURS}</span>
+                <span className="text-mut">P_hora = C_total ÷ {(cap.effMin / 60).toFixed(1)} h</span>
                 <span className="font-bold">
                   {cap.pHora.toLocaleString("es", { maximumFractionDigits: 1 })} uds/h
                 </span>
