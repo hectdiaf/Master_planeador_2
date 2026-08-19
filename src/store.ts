@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Channel,
   Chunk,
@@ -134,8 +134,18 @@ const withLog = (o: Order, text: string): Order => {
   return touch({ ...o, logs: [...o.logs, entry] });
 };
 
-export function usePlanner(): PlannerState & { api: PlannerApi } {
+export const UNDO_LIMIT = 40;
+
+export function usePlanner(): PlannerState & {
+  api: PlannerApi;
+  canUndo: boolean;
+  undo: () => boolean;
+} {
   const [state, setState] = useState<PlannerState>(loadState);
+  const [canUndo, setCanUndo] = useState(false);
+  const historyRef = useRef<PlannerState[]>([]);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     try {
@@ -145,7 +155,27 @@ export function usePlanner(): PlannerState & { api: PlannerApi } {
     }
   }, [state]);
 
+  /** Aplica un cambio guardando antes una instantánea para poder deshacerlo. */
+  const commit = (fn: (s: PlannerState) => PlannerState) => {
+    historyRef.current.push(stateRef.current);
+    if (historyRef.current.length > UNDO_LIMIT) historyRef.current.shift();
+    setCanUndo(true);
+    setState(fn);
+  };
+
+  /** Restaura la última acción. Devuelve true si hubo algo que deshacer. */
+  const undo = (): boolean => {
+    const prev = historyRef.current.pop();
+    if (!prev) return false;
+    setCanUndo(historyRef.current.length > 0);
+    setState(prev);
+    return true;
+  };
+
   const api = useMemo<PlannerApi>(() => {
+    // Toda mutación pasa por commit para alimentar el historial de deshacer.
+    const setState = commit;
+
     const patchOrder = (
       s: PlannerState,
       id: string,
@@ -402,7 +432,7 @@ export function usePlanner(): PlannerState & { api: PlannerApi } {
     };
   }, []);
 
-  return { ...state, api };
+  return { ...state, api, canUndo, undo };
 }
 
 export function loadTheme(): "light" | "dark" {

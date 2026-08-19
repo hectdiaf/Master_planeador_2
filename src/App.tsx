@@ -35,7 +35,7 @@ type ModalState =
   | null;
 
 export default function App() {
-  const { orders, chunks, dayConfigs, api } = usePlanner();
+  const { orders, chunks, dayConfigs, api, canUndo, undo } = usePlanner();
   const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
   const [anchor, setAnchor] = useState(todayISO());
   const [filters, setFilters] = useState<Filters>({
@@ -66,6 +66,25 @@ export default function App() {
     setToasts((t) => [...t, { id, text, tone }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2800);
   }, []);
+
+  const handleUndo = useCallback(() => {
+    if (undo()) notify("Acción deshecha.", "warn");
+  }, [undo, notify]);
+
+  // Atajo global Ctrl/Cmd + Z (fuera de campos de texto)
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+      const el = e.target as HTMLElement;
+      const typing =
+        ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable;
+      if (typing) return;
+      e.preventDefault();
+      handleUndo();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [handleUndo]);
 
   const ordersById = useMemo(() => {
     const m = new Map<string, Order>();
@@ -195,6 +214,8 @@ export default function App() {
         onPick={(o) => setDrawerId(o.id)}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        canUndo={canUndo}
+        onUndo={handleUndo}
       />
 
       <div className="flex min-h-0 flex-1 flex-col">

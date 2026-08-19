@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { Moon, Search, Sun } from "lucide-react";
+import { Moon, Search, Sun, Undo2 } from "lucide-react";
 import type { Order } from "../types";
 import { ORDER_COLORS } from "../types";
 import { fmtLong, todayISO } from "../lib";
@@ -23,6 +23,8 @@ export function Navbar({
   onPick,
   theme,
   onToggleTheme,
+  canUndo,
+  onUndo,
 }: {
   query: string;
   setQuery: (q: string) => void;
@@ -30,6 +32,8 @@ export function Navbar({
   onPick: (order: Order) => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  canUndo: boolean;
+  onUndo: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -143,6 +147,19 @@ export function Navbar({
         <span className="hidden font-mono text-[11px] uppercase tracking-wider text-mut md:block">
           {fmtLong(todayISO())}
         </span>
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Deshacer última acción (Ctrl+Z)"
+          aria-label="Deshacer última acción"
+          className="group relative flex items-center gap-1.5 rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[12px] font-semibold text-mut transition enabled:hover:border-warn/60 enabled:hover:bg-warn/10 enabled:hover:text-warn enabled:active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Undo2 size={14} className="transition-transform duration-300 enabled:group-hover:-rotate-[40deg]" />
+          Deshacer
+          <kbd className="hidden rounded border border-line bg-raise px-1 font-mono text-[9px] text-faint lg:block">
+            Ctrl+Z
+          </kbd>
+        </button>
         <button
           onClick={onToggleTheme}
           role="switch"
