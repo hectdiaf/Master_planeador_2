@@ -1,8 +1,12 @@
-import { CalendarCheck2, ChevronLeft, ChevronRight, Crosshair, FilterX } from "lucide-react";
-import type { Filters, Order, OrderStatus } from "../types";
-import { STATUS_FLOW, STATUS_META } from "../types";
-import { fmtRange } from "../lib";
-import { btnGhost } from "./ui";
+import {
+  CalendarCheck2,
+  ChevronLeft,
+  ChevronRight,
+  FilterX,
+  Plus,
+} from "lucide-react";
+import type { ChunkStatus, Filters } from "../types";
+import { FLOW, STATUS_META } from "../types";
 
 function Select({
   value,
@@ -19,7 +23,9 @@ function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-8 rounded-md border border-line bg-panel px-2 text-[12px] font-medium text-ink outline-none transition focus:border-accent"
+      className={`h-8 rounded-md border bg-panel px-2 text-[12px] font-medium outline-none transition focus:border-accent ${
+        value === "all" ? "border-line text-mut" : "border-accent/50 text-ink"
+      }`}
     >
       <option value="all">{all}</option>
       {options.map((o) => (
@@ -32,154 +38,173 @@ function Select({
 }
 
 export function Toolbar({
-  dates,
+  rangeLabel,
+  isToday,
   onPrev,
   onNext,
   onToday,
   filters,
   setFilters,
-  orders,
+  clients,
+  clientCounts,
+  products,
+  onClearFilters,
+  onNewOrder,
 }: {
-  dates: string[];
+  rangeLabel: string;
+  isToday: boolean;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
   filters: Filters;
   setFilters: (f: Filters) => void;
-  orders: Order[];
+  clients: string[];
+  clientCounts: Record<string, number>;
+  products: string[];
+  onClearFilters: () => void;
+  onNewOrder: () => void;
 }) {
-  const clients = [...new Set(orders.map((o) => o.client))].sort();
-  const products = [...new Set(orders.map((o) => o.product))].sort();
-  const counts = new Map<string, number>();
-  for (const o of orders) counts.set(o.client, (counts.get(o.client) ?? 0) + 1);
-
+  const statusOptions: ChunkStatus[] = [...FLOW, "bloqueado"];
   const active =
-    filters.client !== "all" || filters.status !== "all" || filters.product !== "all";
+    (filters.client !== "all" ? 1 : 0) +
+    (filters.status !== "all" ? 1 : 0) +
+    (filters.product !== "all" ? 1 : 0);
 
   return (
-    <div className="shrink-0 space-y-2.5 px-5 pb-3 pt-1">
-      {/* fila 1: navegación + filtros */}
+    <div className="flex flex-col gap-2 border-b border-line bg-panel/60 px-4 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center overflow-hidden rounded-md border border-line bg-panel">
+        <div className="flex items-center overflow-hidden rounded-md border border-line">
           <button
             onClick={onPrev}
-            className="flex h-8 items-center gap-1 px-2.5 text-[12.5px] font-medium text-mut transition hover:bg-raise hover:text-ink"
-            title="Día operativo anterior"
+            aria-label="Días anteriores"
+            className="grid h-8 w-8 place-items-center bg-panel text-mut transition hover:bg-raise hover:text-ink"
           >
-            <ChevronLeft size={14} /> Anterior
+            <ChevronLeft size={15} />
           </button>
-          <span className="h-5 w-px bg-line" />
           <button
             onClick={onToday}
-            className="flex h-8 items-center gap-1.5 px-3 text-[12.5px] font-semibold text-accent transition hover:bg-accent-soft"
-            title="Centrar la columna de hoy"
+            className={`flex h-8 items-center gap-1.5 border-x border-line px-3 text-[12px] font-semibold transition ${
+              isToday
+                ? "bg-accent text-white dark:text-[#0d1512]"
+                : "bg-panel text-ink hover:bg-raise"
+            }`}
           >
-            <Crosshair size={13} /> Hoy
+            <CalendarCheck2 size={13} />
+            Hoy
           </button>
-          <span className="h-5 w-px bg-line" />
           <button
             onClick={onNext}
-            className="flex h-8 items-center gap-1 px-2.5 text-[12.5px] font-medium text-mut transition hover:bg-raise hover:text-ink"
-            title="Día operativo siguiente"
+            aria-label="Días siguientes"
+            className="grid h-8 w-8 place-items-center bg-panel text-mut transition hover:bg-raise hover:text-ink"
           >
-            Siguiente <ChevronRight size={14} />
+            <ChevronRight size={15} />
           </button>
         </div>
 
-        <span className="hidden font-mono text-[11.5px] tracking-wide text-mut sm:block">
-          {fmtRange(dates[0], dates[dates.length - 1])}
+        <span className="font-mono text-[11.5px] uppercase tracking-wide text-mut">
+          {rangeLabel}
         </span>
 
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <span className="mr-0.5 hidden text-[11px] font-semibold uppercase tracking-wider text-faint lg:block">
-            Filtros
-          </span>
-          <Select
-            value={filters.client}
-            onChange={(v) => setFilters({ ...filters, client: v })}
-            options={clients}
-            all="Cliente / Canal: todos"
-          />
-          <Select
-            value={filters.status}
-            onChange={(v) => setFilters({ ...filters, status: v })}
-            options={[...STATUS_FLOW, "bloqueado"].filter(
-              (s, i, a) => a.indexOf(s) === i
-            )}
-            all="Estado: todos"
-          />
-          <Select
-            value={filters.product}
-            onChange={(v) => setFilters({ ...filters, product: v })}
-            options={products}
-            all="Producto: todos"
-          />
-          {active && (
-            <button
-              onClick={() => setFilters({ client: "all", status: "all", product: "all" })}
-              className="flex h-8 items-center gap-1 rounded-md px-2 text-[12px] font-semibold text-danger transition hover:bg-danger/10"
-            >
-              <FilterX size={13} /> Limpiar
-            </button>
-          )}
-        </div>
+        <div className="mx-1 h-5 w-px bg-line" />
+
+        <Select
+          value={filters.client}
+          onChange={(v) => setFilters({ ...filters, client: v })}
+          options={clients}
+          all="Cliente / Canal: todos"
+        />
+        <select
+          value={filters.status}
+          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+          className={`h-8 rounded-md border bg-panel px-2 text-[12px] font-medium outline-none transition focus:border-accent ${
+            filters.status === "all" ? "border-line text-mut" : "border-accent/50 text-ink"
+          }`}
+        >
+          <option value="all">Estado tarjeta: todos</option>
+          {statusOptions.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_META[s].label}
+            </option>
+          ))}
+        </select>
+        <Select
+          value={filters.product}
+          onChange={(v) => setFilters({ ...filters, product: v })}
+          options={products}
+          all="Producto: todos"
+        />
+
+        {active > 0 && (
+          <button
+            onClick={onClearFilters}
+            className="flex h-8 items-center gap-1 rounded-md border border-line px-2 text-[11.5px] font-medium text-mut transition hover:border-danger/40 hover:text-danger"
+          >
+            <FilterX size={13} />
+            Limpiar ({active})
+          </button>
+        )}
+
+        <button
+          onClick={onNewOrder}
+          className="ml-auto flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[12.5px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.98] dark:text-[#0d1512]"
+        >
+          <Plus size={14} />
+          Nuevo pedido
+        </button>
       </div>
 
-      {/* fila 2: conteo por cliente + leyenda */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-faint">
-            Pedidos por cliente
-          </span>
-          {clients.map((c) => {
-            const on = filters.client === c;
-            return (
-              <button
-                key={c}
-                onClick={() =>
-                  setFilters({ ...filters, client: on ? "all" : c })
-                }
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-[3px] text-[11.5px] font-semibold transition active:scale-95 ${
-                  on
-                    ? "border-accent bg-accent-soft text-accent"
-                    : "border-line bg-panel text-mut hover:border-line2 hover:text-ink"
-                }`}
-                title={`Filtrar por ${c}`}
-              >
-                <CalendarCheck2 size={12} className={on ? "text-accent" : "text-faint"} />
-                {c}
-                <span className="font-mono text-[10.5px] tabular">{counts.get(c)}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <div className="flex items-center gap-2">
-            {STATUS_FLOW.concat("bloqueado" as OrderStatus).map((s) => (
-              <span key={s} className="flex items-center gap-1 text-[10.5px] font-medium text-mut" title={STATUS_META[s].label}>
-                <span className="h-2 w-2 rounded-full" style={{ background: STATUS_META[s].hex }} />
-                {STATUS_META[s].short}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-faint">
+          Pedidos por cliente
+        </span>
+        {clients.map((c) => {
+          const on = filters.client === c;
+          return (
+            <button
+              key={c}
+              onClick={() =>
+                setFilters({ ...filters, client: on ? "all" : c })
+              }
+              className={`flex items-center gap-1.5 rounded-full border px-2 py-[2px] text-[11px] font-medium transition ${
+                on
+                  ? "border-accent/60 bg-accent/10 text-accent"
+                  : "border-line bg-panel text-mut hover:border-line2 hover:text-ink"
+              }`}
+            >
+              {c}
+              <span className="font-mono font-semibold tabular">
+                {clientCounts[c] ?? 0}
               </span>
-            ))}
-          </div>
-          <span className="hidden h-4 w-px bg-line sm:block" />
-          <div className="flex items-center gap-2 text-[10.5px] font-medium text-mut">
-            <span className="uppercase tracking-wider text-faint">Ocupación</span>
-            <span className="flex items-center gap-1">
-              <span className="h-1.5 w-4 rounded-full bg-ok/80" /> &lt;85%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-1.5 w-4 rounded-full bg-warn/80" /> 85–100%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-1.5 w-4 rounded-full bg-danger/80" /> &gt;100%
-            </span>
-          </div>
-        </div>
+            </button>
+          );
+        })}
+
+        <span className="mx-1 h-4 w-px bg-line" />
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-faint">
+          Leyenda
+        </span>
+        {statusOptions.map((s) => (
+          <span
+            key={s}
+            className="flex items-center gap-1 text-[11px] text-mut"
+            title={STATUS_META[s].label}
+          >
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: STATUS_META[s].hex }}
+            />
+            {STATUS_META[s].short}
+          </span>
+        ))}
+        <span className="flex items-center gap-1 text-[11px] text-mut">
+          <span className="inline-flex h-2 w-8 overflow-hidden rounded-sm">
+            <span className="h-full flex-1" style={{ background: "var(--sf-ok)" }} />
+            <span className="h-full flex-1" style={{ background: "var(--sf-warn)" }} />
+            <span className="h-full flex-1" style={{ background: "var(--sf-danger)" }} />
+          </span>
+          Ocupación &lt;85 / ≤100 / &gt;100%
+        </span>
       </div>
     </div>
   );
 }
-
-export { btnGhost };

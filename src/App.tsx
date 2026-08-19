@@ -1,4 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { AppProvider, useApp, type OrderInput } from "./store";
+import type { ChunkStatus, Filters, Order } from "./types";
+import {
+  buildWindow,
+  ensureBiz,
+  fmtMedium,
+  orderRemaining,
+  shiftBiz,
+  todayISO,
+} from "./lib";
+import { PRODUCTS, productName } from "./data";
 import { Navbar } from "./components/Navbar";
 import { Toolbar } from "./components/Toolbar";
 import { Sidebar } from "./components/Sidebar";
@@ -8,203 +28,258 @@ import {
   AssignModal,
   BlockModal,
   ConfirmModal,
+  DespachoModal,
   OrderFormModal,
   SplitModal,
-  type OrderDraft,
 } from "./components/Modals";
 import { Toasts, type Toast } from "./components/ui";
-import {
-  DEFAULT_DAY_CONFIG,
-  capacityOf,
-  loadTheme,
-  saveTheme,
-  usePlanner,
-} from "./store";
-import {
-  buildWindow,
-  ensureBiz,
-  fmtMedium,
-  nextBiz,
-  prevBiz,
-  todayISO,
-} from "./lib";
-import type { Filters, Order } from "./types";
-import { uid } from "./types";
 
 type ModalState =
-  | { type: "split"; chunkId: string }
-  | { type: "block"; orderId: string }
-  | { type: "assign"; orderId: string | null; date: string }
   | { type: "order"; orderId: string | null }
-  | { type: "despacho"; orderId: string }
+  | { type: "split"; chunkId: string }
+  | { type: "block"; chunkId: string }
+  | { type: "despacho"; chunkId: string }
+  | { type: "assign"; orderId: string | null; date: string }
+  | { type: "delete-chunk"; chunkId: string }
   | null;
 
-export default function App() {
-  const { state, api } = usePlanner();
+function loadTheme(): "light" | "dark" {
+  try {
+    return localStorage.getItem("po-theme") === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function Planner() {
+  const { state, api, canUndo, undo } = useApp();
+  const { orders, chunks, dayConfigs } = state;
+
   const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
-  const [anchor, setAnchor] = useState(todayISO());
+  const [anchor, setAnchor] = useState(() => ensureBiz(todayISO()));
   const [filters, setFilters] = useState<Filters>({
     client: "all",
     status: "all",
     product: "all",
   });
   const [query, setQuery] = useState("");
-  const [drawerId, setDrawerId] = useState<string | null>(null);
-  const [modal, setModal] = useState<ModalState>(null);
   const [tab, setTab] = useState<"backlog" | "capacidad">("backlog");
   const [collapsed, setCollapsed] = useState(false);
-  const [capDate, setCapDate] = useState(ensureBiz(todayISO()));
+  const [capacityDate, setCapacityDate] = useState(() => ensureBiz(todayISO()));
+  const [drawer, setDrawer] = useState<{ orderId: string; chunkId: string | null } | null>(null);
+  const [highlight, setHighlight] = useState<{
+    orderId: string;
+    status: ChunkStatus | "sinAgendar";
+  } | null>(null);
+  const [modal, setModal] = useState<ModalState>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [dragging, setDragging] = useState<{ kind: "order" | "chunk"; label: string } | null>(null);
+  const toastTimers = useRef<number[]>([]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.style.colorScheme = theme;
-    saveTheme(theme);
+    try {
+      localStorage.setItem("po-theme", theme);
+    } catch {
+      /* noop */
+    }
   }, [theme]);
 
+  const notify = useCallback(
+    (text: string, tone: "ok" | "warn" | "danger" = "ok") => {
+      const id = Math.random().toString(36).slice(2);
+      setToasts((t) => [...t, { id, text, tone }]);
+      const timer = window.setTimeout(() => {
+        setToasts((t) => t.filter((x) => x.id !== id));
+      }, 2800);
+      toastTimers.current.push(timer);
+    },
+    []
+  );
+  useEffect(() => () => toastTimers.current.forEach(clearTimeout), []);
+
+  /* deshacer (Ctrl/Cmd+Z) fuera de campos de texto */
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !modal) setDrawerId(null);
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+      const el = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable) return;
+      e.preventDefault();
+      if (canUndo) {
+        undo();
+        notify("Último cambio deshecho.", "warn");
+      }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [modal]);
-
-  const notify = (text: string, tone: Toast["tone"] = "ok") => {
-    const id = uid();
-    setToasts((t) => [...t.slice(-3), { id, text, tone }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
-  };
-
-  const dates = useMemo(() => buildWindow(anchor, 8), [anchor]);
+  }, [canUndo, undo, notify]);
 
   const ordersById = useMemo(
-    () => new Map(state.orders.map((o) => [o.id, o])),
-    [state.orders]
+    () => new Map(orders.map((o) => [o.id, o])),
+    [orders]
   );
+  const dates = useMemo(() => buildWindow(anchor, 8), [anchor]);
+  const today = todayISO();
 
-  const matches = (o: Order) => {
-    const q = query.trim().toLowerCase();
-    const okQ =
-      !q ||
-      [o.code, o.product, o.client, o.channel, o.category]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    const okC =
-      filters.client === "all" ||
-      o.client === filters.client ||
-      o.channel === filters.client;
-    const okS = filters.status === "all" || o.status === filters.status;
-    const okP = filters.product === "all" || o.product === filters.product;
-    return okQ && okC && okS && okP;
-  };
-
-  const backlogOrders = useMemo(
-    () => state.orders.filter((o) => !o.archived && matches(o)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.orders, filters, query]
+  const clients = useMemo(
+    () => [...new Set(orders.map((o) => o.client))].sort(),
+    [orders]
   );
-
-  const boardChunks = useMemo(() => {
-    const ids = new Set(state.orders.filter(matches).map((o) => o.id));
-    return state.chunks.filter((c) => ids.has(c.orderId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.orders, state.chunks, filters, query]);
-
-  const scheduled = useMemo(() => {
+  const clientCounts = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const c of state.chunks) m[c.orderId] = (m[c.orderId] ?? 0) + c.units;
+    for (const o of orders) m[o.client] = (m[o.client] ?? 0) + 1;
     return m;
-  }, [state.chunks]);
-
-  const assigned = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of state.chunks) m[c.date] = (m[c.date] ?? 0) + c.units;
-    return m;
-  }, [state.chunks]);
-
-  const hiddenFinalized = state.orders.filter((o) => o.archived).length;
-  const drawerOrder = drawerId ? (ordersById.get(drawerId) ?? null) : null;
-  const drawerChunks = drawerId
-    ? state.chunks
-        .filter((c) => c.orderId === drawerId)
-        .sort((a, b) => a.date.localeCompare(b.date))
-    : [];
-
-  const remaining = (orderId: string) => {
-    const o = ordersById.get(orderId);
-    if (!o) return 0;
-    return Math.max(0, o.totalUnits - (scheduled[orderId] ?? 0));
-  };
+  }, [orders]);
+  const productsInUse = useMemo(
+    () =>
+      [...new Set(orders.flatMap((o) => o.items.map((i) => productName(i.productId))))].sort(),
+    [orders]
+  );
 
   const nextCode = useMemo(() => {
-    let max = 2481;
-    for (const o of state.orders) {
-      const m = /(\d+)\s*$/.exec(o.code);
-      if (m) max = Math.max(max, Number(m[1]));
-    }
-    return `OP-${max + 1}`;
-  }, [state.orders]);
+    const max = orders.reduce((m, o) => {
+      const n = parseInt(o.code.replace(/\D/g, ""), 10);
+      return Number.isNaN(n) ? m : Math.max(m, n);
+    }, 100);
+    return `PED-${max + 1}`;
+  }, [orders]);
+
+  const remainingOf = useCallback(
+    (orderId: string) => {
+      const o = ordersById.get(orderId);
+      return o ? orderRemaining(o, chunks) : 0;
+    },
+    [ordersById, chunks]
+  );
+
+  const matchOrder = useCallback(
+    (o: Order) => {
+      if (filters.client !== "all" && o.client !== filters.client) return false;
+      if (
+        filters.product !== "all" &&
+        !o.items.some((i) => productName(i.productId) === filters.product)
+      )
+        return false;
+      return true;
+    },
+    [filters]
+  );
+
+  /* si el pedido del drawer desaparece (undo / borrado), cerrar */
+  useEffect(() => {
+    if (drawer && !ordersById.has(drawer.orderId)) setDrawer(null);
+  }, [drawer, ordersById]);
 
   /* ── acciones ── */
 
-  const confirmAssign = (orderId: string, units: number, date: string) => {
-    const day = ensureBiz(date);
-    api.addChunk(orderId, day, units);
-    const o = ordersById.get(orderId);
-    notify(`${units} uds de ${o?.code ?? "pedido"} agendadas el ${fmtMedium(day)}.`);
-    setModal(null);
+  const onDragStart = (e: DragStartEvent) => {
+    const id = String(e.active.id);
+    if (id.startsWith("o:")) {
+      const o = ordersById.get(id.slice(2));
+      if (o) setDragging({ kind: "order", label: `${o.code} · ${o.client}` });
+    } else if (id.startsWith("c:")) {
+      const c = chunks.find((x) => x.id === id.slice(2));
+      if (c) setDragging({ kind: "chunk", label: `${c.units} uds · ${fmtMedium(c.date)}` });
+    }
   };
 
-  const confirmDespacho = (orderId: string) => {
-    const o = ordersById.get(orderId);
-    api.confirmDespacho(orderId);
-    notify(`${o?.code ?? "Pedido"} finalizado — salió del backlog, sigue en calendario.`);
-    setModal(null);
+  const onDragEnd = (e: DragEndEvent) => {
+    setDragging(null);
+    const overId = e.over ? String(e.over.id) : null;
+    if (!overId || !overId.startsWith("day:")) return;
+    const date = overId.slice(4);
+    const activeId = String(e.active.id);
+    if (activeId.startsWith("c:")) {
+      const chunkId = activeId.slice(2);
+      const c = chunks.find((x) => x.id === chunkId);
+      if (c && c.date !== date) {
+        api.moveChunk(chunkId, date);
+        notify(`Tarjeta de ${c.units} uds movida al ${fmtMedium(date)}.`);
+      }
+    } else if (activeId.startsWith("o:")) {
+      const orderId = activeId.slice(2);
+      if (remainingOf(orderId) > 0) setModal({ type: "assign", orderId, date });
+      else notify("Ese pedido no tiene unidades pendientes por agendar.", "warn");
+    }
   };
 
-  const saveOrderForm = (draft: OrderDraft) => {
-    if (modal?.type === "order" && modal.orderId) {
-      api.patchOrder(modal.orderId, { ...draft }, "Información general del pedido actualizada.");
-      notify("Cambios guardados.");
+  const handleChunkStatus = (chunkId: string, status: ChunkStatus) => {
+    const c = chunks.find((x) => x.id === chunkId);
+    if (!c) return;
+    if (status === "bloqueado") {
+      setModal({ type: "block", chunkId });
+    } else if (status === "despacho") {
+      setModal({ type: "despacho", chunkId });
     } else {
-      api.addOrder({
-        ...draft,
-        status: "backlog",
-        progress: 0,
-      });
-      notify(`Pedido ${draft.code} creado en backlog.`);
+      api.setChunkStatus(chunkId, status);
+      notify(`Tarjeta de ${c.units} uds → ${status === "qa" ? "QA y Limpieza" : status}.`);
+    }
+  };
+
+  const saveOrderForm = (input: OrderInput) => {
+    if (modal?.type !== "order") return;
+    if (modal.orderId) {
+      api.updateOrder(modal.orderId, input);
+      notify("Pedido actualizado — totales recalculados.");
+    } else {
+      const id = api.createOrder(input, nextCode, orders.length % 8);
+      notify(`Pedido ${nextCode} creado.`);
+      setDrawer({ orderId: id, chunkId: null });
     }
     setModal(null);
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  const drawerOrder = drawer ? ordersById.get(drawer.orderId) ?? null : null;
+
+  const chunkOf = (id: string) => chunks.find((c) => c.id === id) ?? null;
+  const modalChunk =
+    modal && "chunkId" in modal ? chunkOf(modal.chunkId) : null;
+  const modalChunkOrder = modalChunk ? ordersById.get(modalChunk.orderId) ?? null : null;
+
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-screen flex-col overflow-hidden bg-paper text-ink">
       <Navbar
         query={query}
         setQuery={setQuery}
-        orders={state.orders}
-        onPick={(o) => setDrawerId(o.id)}
+        orders={orders}
+        productName={productName}
+        onPick={(o) => setDrawer({ orderId: o.id, chunkId: null })}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        canUndo={canUndo}
+        onUndo={() => {
+          undo();
+          notify("Último cambio deshecho.", "warn");
+        }}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 px-5 pb-1 pt-4">
-          <h1 className="font-display text-[36px] font-bold leading-none tracking-wide">
-            Próximos pedidos<span className="text-accent">.</span>
+      <main className="flex min-h-0 flex-1 flex-col">
+        <div className="px-4 pb-1 pt-3">
+          <h1 className="font-display text-[22px] font-bold uppercase leading-none tracking-wide">
+            Próximos pedidos.
           </h1>
         </div>
 
         <Toolbar
-          dates={dates}
-          onPrev={() => setAnchor((a) => prevBiz(a))}
-          onNext={() => setAnchor((a) => nextBiz(a))}
-          onToday={() => setAnchor(todayISO())}
+          rangeLabel={`${fmtMedium(dates[0])} → ${fmtMedium(dates[dates.length - 1])}`}
+          isToday={anchor === today}
+          onPrev={() => setAnchor((a) => shiftBiz(a, -1))}
+          onNext={() => setAnchor((a) => shiftBiz(a, 1))}
+          onToday={() => setAnchor(today)}
           filters={filters}
           setFilters={setFilters}
-          orders={state.orders.filter((o) => !o.archived)}
+          clients={clients}
+          clientCounts={clientCounts}
+          products={productsInUse}
+          onClearFilters={() =>
+            setFilters({ client: "all", status: "all", product: "all" })
+          }
+          onNewOrder={() => setModal({ type: "order", orderId: null })}
         />
 
         <div className="flex min-h-0 flex-1">
@@ -213,133 +288,121 @@ export default function App() {
             onTab={setTab}
             collapsed={collapsed}
             onToggleCollapse={() => setCollapsed((c) => !c)}
-            orders={backlogOrders}
-            hiddenFinalized={hiddenFinalized}
-            scheduled={scheduled}
+            orders={orders}
+            chunks={chunks}
+            dayConfigs={dayConfigs}
             api={api}
-            notify={notify}
+            productName={productName}
+            capacityDate={capacityDate}
+            setCapacityDate={setCapacityDate}
             onEditOrder={(id) => setModal({ type: "order", orderId: id })}
+            onOpenOrder={(id) => setDrawer({ orderId: id, chunkId: null })}
             onNewOrder={() => setModal({ type: "order", orderId: null })}
-            onBlock={(id) => setModal({ type: "block", orderId: id })}
-            onDespacho={(id) => setModal({ type: "despacho", orderId: id })}
-            onAssign={(orderId, date) => setModal({ type: "assign", orderId, date })}
-            dates={dates}
-            capDate={capDate}
-            setCapDate={setCapDate}
-            dayConfigs={state.dayConfigs}
-            assigned={assigned}
-            setDayConfig={api.setDayConfig}
+            notify={notify}
           />
 
-          <main className="min-h-0 min-w-0 flex-1">
+          <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             <Board
               dates={dates}
-              chunks={boardChunks}
+              chunks={chunks}
               ordersById={ordersById}
-              dayConfigs={state.dayConfigs}
-              assigned={assigned}
-              api={api}
-              notify={notify}
-              onCardClick={(c) => setDrawerId(c.orderId)}
-              onSplit={(c) => setModal({ type: "split", chunkId: c.id })}
-              onBlock={(id) => setModal({ type: "block", orderId: id })}
-              onUnblock={(id) => {
-                api.unblockOrder(id);
+              dayConfigs={dayConfigs}
+              filters={filters}
+              matchOrder={matchOrder}
+              highlight={highlight}
+              focusChunkId={drawer?.chunkId ?? null}
+              remainingOf={remainingOf}
+              onCardClick={(c) =>
+                setDrawer({ orderId: c.orderId, chunkId: c.id })
+              }
+              onChunkUnits={(id, u) => api.setChunkUnits(id, u)}
+              onChunkStatus={handleChunkStatus}
+              onBlockChunk={(id) => setModal({ type: "block", chunkId: id })}
+              onUnblockChunk={(id) => {
+                api.unblockChunk(id);
                 notify("Bloqueo liberado.");
               }}
-              onAssignToDay={(date) => setModal({ type: "assign", orderId: null, date })}
-              onAssignOrder={(orderId, date) =>
-                setModal({ type: "assign", orderId, date })
-              }
-              onDespacho={(id) => setModal({ type: "despacho", orderId: id })}
-              onGear={(date) => {
+              onSplitChunk={(id) => setModal({ type: "split", chunkId: id })}
+              onRemoveChunk={(id) => setModal({ type: "delete-chunk", chunkId: id })}
+              onDropChunk={(id, date) => {
+                api.moveChunk(id, date);
+                notify(`Tarjeta movida al ${fmtMedium(date)}.`);
+              }}
+              onDropOrder={(orderId, date) => {
+                if (remainingOf(orderId) > 0) setModal({ type: "assign", orderId, date });
+                else notify("Ese pedido no tiene unidades pendientes.", "warn");
+              }}
+              onAdd={(date) => setModal({ type: "assign", orderId: null, date })}
+              onGearDay={(date) => {
+                setCapacityDate(date);
                 setTab("capacidad");
-                setCapDate(date);
                 setCollapsed(false);
               }}
             />
-          </main>
+            <DragOverlay>
+              {dragging && (
+                <div className="flex rotate-2 items-center gap-2 rounded-lg border border-accent/60 bg-panel px-3 py-2 text-[12px] font-semibold shadow-pop">
+                  <span
+                    className={`rounded px-1 py-[1px] font-mono text-[9px] uppercase tracking-wider ${
+                      dragging.kind === "order"
+                        ? "bg-accent/12 text-accent"
+                        : "bg-warn/15 text-warn"
+                    }`}
+                  >
+                    {dragging.kind === "order" ? "Pedido" : "Tarjeta"}
+                  </span>
+                  {dragging.label}
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
+
+          {drawerOrder && drawer && (
+            <Drawer
+              order={drawerOrder}
+              chunks={chunks}
+              api={api}
+              productName={productName}
+              focusChunkId={drawer.chunkId}
+              onFocusChunk={(chunkId) => setDrawer({ ...drawer, chunkId })}
+              highlight={highlight}
+              onHighlight={(status) =>
+                setHighlight(status ? { orderId: drawer.orderId, status } : null)
+              }
+              onClose={() => {
+                setDrawer(null);
+                setHighlight(null);
+              }}
+              onEditOrder={(id) => setModal({ type: "order", orderId: id })}
+              onBlockChunk={(id) => setModal({ type: "block", chunkId: id })}
+              onUnblockChunk={(id) => {
+                api.unblockChunk(id);
+                notify("Bloqueo liberado.");
+              }}
+              notify={notify}
+            />
+          )}
         </div>
-      </div>
+      </main>
 
-      {drawerOrder && (
-        <Drawer
-          order={drawerOrder}
-          chunks={drawerChunks}
-          onClose={() => setDrawerId(null)}
-          api={api}
-          notify={notify}
-          onConfirmDespacho={(id) => setModal({ type: "despacho", orderId: id })}
-          onBlock={(id) => setModal({ type: "block", orderId: id })}
-          onEditOrder={(id) => setModal({ type: "order", orderId: id })}
-        />
-      )}
-
-      {modal?.type === "split" &&
-        (() => {
-          const chunk = state.chunks.find((c) => c.id === modal.chunkId);
-          const order = chunk ? ordersById.get(chunk.orderId) : undefined;
-          if (!chunk || !order) return null;
-          return (
-            <SplitModal
-              chunk={chunk}
-              order={order}
-              onClose={() => setModal(null)}
-              onConfirm={(parts) => {
-                api.splitChunk(chunk.id, parts);
-                notify(`Fracción dividida en ${parts.length} jornadas.`);
-                setModal(null);
-              }}
-            />
-          );
-        })()}
-
-      {modal?.type === "block" &&
-        (() => {
-          const order = ordersById.get(modal.orderId);
-          if (!order) return null;
-          return (
-            <BlockModal
-              order={order}
-              onClose={() => setModal(null)}
-              onConfirm={(reason) => {
-                api.blockOrder(order.id, reason);
-                notify(`Pedido bloqueado: ${reason}`, "warn");
-                setModal(null);
-              }}
-            />
-          );
-        })()}
-
-      {modal?.type === "assign" && (
-        <AssignModal
-          orders={state.orders}
-          orderId={modal.orderId}
-          date={modal.date}
-          remaining={remaining}
-          freeCap={
-            capacityOf(state.dayConfigs[ensureBiz(modal.date)] ?? DEFAULT_DAY_CONFIG).cap -
-            (assigned[ensureBiz(modal.date)] ?? 0)
-          }
-          onClose={() => setModal(null)}
-          onConfirm={confirmAssign}
-        />
-      )}
-
+      {/* ── modales ── */}
       {modal?.type === "order" &&
         (() => {
           const editingId = modal.orderId;
+          const editing = editingId ? ordersById.get(editingId) ?? null : null;
           return (
             <OrderFormModal
-              order={editingId ? (ordersById.get(editingId) ?? null) : null}
+              order={editing}
               nextCode={nextCode}
+              products={PRODUCTS}
+              assignedUnits={editingId ? chunks.filter((c) => c.orderId === editingId).reduce((a, c) => a + c.units, 0) : 0}
               onClose={() => setModal(null)}
               onConfirm={saveOrderForm}
               onDelete={
                 editingId
                   ? () => {
                       api.removeOrder(editingId);
-                      if (drawerId === editingId) setDrawerId(null);
+                      if (drawer?.orderId === editingId) setDrawer(null);
                       setModal(null);
                       notify("Pedido eliminado del plan.", "danger");
                     }
@@ -349,19 +412,85 @@ export default function App() {
           );
         })()}
 
-      {modal?.type === "despacho" && (
-        <ConfirmModal
-          title="Confirmar finalización"
-          body={`¿Estás seguro de que ya finalizó el pedido ${
-            ordersById.get(modal.orderId)?.code ?? ""
-          }? Se marcará como despachado al 100%, desaparecerá del backlog y quedará registrado en el calendario.`}
-          confirmLabel="finalizar pedido"
+      {modal?.type === "split" && modalChunk && modalChunkOrder && (
+        <SplitModal
+          chunk={modalChunk}
+          orderCode={modalChunkOrder.code}
           onClose={() => setModal(null)}
-          onConfirm={() => confirmDespacho(modal.orderId)}
+          onConfirm={(parts) => {
+            api.splitChunk(modalChunk.id, parts);
+            setModal(null);
+            notify(`Tarjeta fraccionada en ${parts.length} jornadas.`);
+          }}
+        />
+      )}
+
+      {modal?.type === "block" && modalChunk && modalChunkOrder && (
+        <BlockModal
+          chunk={modalChunk}
+          orderCode={modalChunkOrder.code}
+          onClose={() => setModal(null)}
+          onConfirm={(reason) => {
+            api.blockChunk(modalChunk.id, reason);
+            setModal(null);
+            notify(`Tarjeta bloqueada: ${reason}.`, "danger");
+          }}
+        />
+      )}
+
+      {modal?.type === "despacho" && modalChunk && modalChunkOrder && (
+        <DespachoModal
+          chunk={modalChunk}
+          orderCode={modalChunkOrder.code}
+          onClose={() => setModal(null)}
+          onConfirm={() => {
+            api.setChunkStatus(modalChunk.id, "despacho");
+            setModal(null);
+            notify(`${modalChunk.units} uds marcadas como despachadas.`);
+          }}
+        />
+      )}
+
+      {modal?.type === "delete-chunk" && modalChunk && (
+        <ConfirmModal
+          title="Quitar tarjeta del día"
+          body={`Las ${modalChunk.units} uds del ${fmtMedium(modalChunk.date)} volverán al backlog del pedido y podrán reasignarse.`}
+          confirmLabel="Quitar del calendario"
+          danger
+          onClose={() => setModal(null)}
+          onConfirm={() => {
+            api.removeChunk(modalChunk.id);
+            setModal(null);
+            notify("Tarjeta devuelta al backlog.", "warn");
+          }}
+        />
+      )}
+
+      {modal?.type === "assign" && (
+        <AssignModal
+          orders={orders}
+          chunks={chunks}
+          date={modal.date}
+          presetOrderId={modal.orderId ?? undefined}
+          productName={productName}
+          onClose={() => setModal(null)}
+          onConfirm={(orderId, units) => {
+            api.assignUnits(orderId, modal.date, units);
+            setModal(null);
+            notify(`${units} uds asignadas al ${fmtMedium(modal.date)}.`);
+          }}
         />
       )}
 
       <Toasts items={toasts} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProvider>
+      <Planner />
+    </AppProvider>
   );
 }

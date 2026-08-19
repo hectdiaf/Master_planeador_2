@@ -1,185 +1,150 @@
-import type { AppState } from "./store";
-import type { Chunk, DayConfig, Order, OrderStatus } from "./types";
-import { uid } from "./types";
-import { businessDaysFrom, ensureBiz, shiftDays, todayISO } from "./lib";
+import type {
+  Channel,
+  Chunk,
+  ChunkStatus,
+  DayConfig,
+  Order,
+  OrderItem,
+  Product,
+} from "./types";
+import { DEFAULT_DAY } from "./types";
+import { ensureBiz, shiftBiz, todayISO } from "./lib";
 
-const ago = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
-const now = () => new Date().toISOString();
+export const PRODUCTS: Product[] = [
+  { id: "p01", name: "iPhone 11 64GB" },
+  { id: "p02", name: "iPhone 12 64GB" },
+  { id: "p03", name: "iPhone 13 128GB" },
+  { id: "p04", name: "iPhone XR 64GB" },
+  { id: "p05", name: "iPhone SE 2022 64GB" },
+  { id: "p06", name: "Galaxy S21 128GB" },
+  { id: "p07", name: "Galaxy S22 128GB" },
+  { id: "p08", name: "Galaxy A32 64GB" },
+  { id: "p09", name: "Galaxy A54 128GB" },
+  { id: "p10", name: "Redmi Note 11 128GB" },
+  { id: "p11", name: "Redmi 9A 32GB" },
+  { id: "p12", name: "Moto G60 128GB" },
+  { id: "p13", name: "Tecno Spark 20 128GB" },
+  { id: "p14", name: "Tecno Camon 30 256GB" },
+];
 
-function order(
-  o: Partial<Order> &
-    Pick<Order, "code" | "product" | "client" | "channel" | "totalUnits" | "color">
-): Order {
-  return {
-    id: uid(),
-    subchannel: "—",
-    category: "Gama Media",
-    progress: 0,
-    requestDate: shiftDays(todayISO(), -5),
-    deliveryDate: shiftDays(todayISO(), 7),
-    status: "backlog" as OrderStatus,
-    logs: [],
-    createdAt: ago(120),
-    updatedAt: ago(3),
-    ...o,
-  } as Order;
+export const productName = (id: string): string =>
+  PRODUCTS.find((p) => p.id === id)?.name ?? "Referencia";
+
+export interface SeedState {
+  orders: Order[];
+  chunks: Chunk[];
+  dayConfigs: Record<string, DayConfig>;
 }
 
-function chunk(orderId: string, date: string, units: number, h: number): Chunk {
-  return { id: uid(), orderId, date: ensureBiz(date), units, createdAt: ago(h) };
-}
+export function seedState(): SeedState {
+  const today = ensureBiz(todayISO());
+  /** día laborable relativo a hoy (−3…+5) */
+  const d = (n: number) => shiftBiz(today, n);
+  const ts = (hoursAgo: number) =>
+    new Date(Date.now() - hoursAgo * 3600_000).toISOString();
 
-export function seedState(): AppState {
-  const d = businessDaysFrom(todayISO(), 14);
-
-  const o1 = order({
-    code: "OP-2481", product: "iPhone 11 64GB", client: "Mercado Libre",
-    channel: "Marketplace", subchannel: "Mercado Libre Full", category: "Premium",
-    color: "teal", totalUnits: 200, progress: 35, status: "revision",
-    requestDate: shiftDays(d[0], -4), deliveryDate: d[6],
-    logs: [
-      { id: uid(), text: "Ingreso de 200 unidades desde CEDIS norte.", at: ago(52), auto: true },
-      { id: uid(), text: "Diagnóstico iniciado en 35% del lote, 12 equipos con falla de batería.", at: ago(6) },
-    ],
-    createdAt: ago(52), updatedAt: ago(6),
+  let oc = 0;
+  const mkOrder = (
+    code: string,
+    client: string,
+    channel: Channel,
+    reqOffset: number,
+    delOffset: number,
+    items: OrderItem[],
+    colorIdx: number,
+    logs: Order["logs"] = []
+  ): Order => ({
+    id: `o${++oc}`,
+    code,
+    client,
+    channel,
+    requestDate: d(reqOffset),
+    deliveryDate: d(delOffset),
+    items,
+    colorIdx,
+    logs,
+    createdAt: ts(72 + oc * 5),
+    updatedAt: ts(2 + oc),
   });
 
-  const o2 = order({
-    code: "OP-2477", product: "Galaxy A32", client: "Falabella",
-    channel: "Retail", subchannel: "Tienda física", category: "Gama Media",
-    color: "sky", totalUnits: 120, progress: 70, status: "qa",
-    requestDate: shiftDays(d[0], -7), deliveryDate: d[4],
-    logs: [{ id: uid(), text: "Lote en verificación QA, limpieza profunda en curso.", at: ago(20), auto: true }],
-    createdAt: ago(160), updatedAt: ago(20),
-  });
-
-  const o3 = order({
-    code: "OP-2470", product: "Redmi Note 10", client: "Claro",
-    channel: "Operador", subchannel: "Postpago", category: "Gama Entrada",
-    color: "amber", totalUnits: 300, progress: 45, status: "reacondicionamiento",
-    requestDate: shiftDays(d[0], -9), deliveryDate: d[9],
-    logs: [{ id: uid(), text: "Cambio de módulo de carga en 40 unidades.", at: ago(28), auto: true }],
-    createdAt: ago(220), updatedAt: ago(28),
-  });
-
-  const o4 = order({
-    code: "OP-2466", product: "iPhone XR", client: "Ripley",
-    channel: "Retail", subchannel: "Online", category: "Premium",
-    color: "rose", totalUnits: 80, progress: 88, status: "empaque",
-    requestDate: shiftDays(d[0], -12), deliveryDate: d[3],
-    logs: [{ id: uid(), text: "Cajas máster listas, pendiente sello de seguridad.", at: ago(10), auto: true }],
-    createdAt: ago(300), updatedAt: ago(10),
-  });
-
-  const o5 = order({
-    code: "OP-2459", product: "Galaxy S20 FE", client: "Entel",
-    channel: "Operador", subchannel: "Postpago", category: "Premium",
-    color: "orange", totalUnits: 150, progress: 40,
-    status: "bloqueado", prevStatus: "reacondicionamiento",
-    blockReason: "Falta de repuestos",
-    blockedAt: ago(20),
-    requestDate: shiftDays(d[0], -8), deliveryDate: d[8],
-    logs: [
-      { id: uid(), text: "Reacondicionamiento al 40%, 60 equipos con pantalla dañada.", at: ago(46), auto: true },
-      { id: uid(), text: "Bloqueado: Falta de repuestos — pantallas SM-G780 en espera de proveedor (ETA 5 días).", at: ago(20), auto: true },
-    ],
-    createdAt: ago(260), updatedAt: ago(20),
-  });
-
-  const o6 = order({
-    code: "OP-2454", product: "Moto G30", client: "Mercado Libre",
-    channel: "Marketplace", subchannel: "Publicación clásica", category: "Gama Entrada",
-    color: "lime", totalUnits: 90, progress: 0, status: "backlog",
-    requestDate: shiftDays(d[0], -2), deliveryDate: d[7],
-    logs: [{ id: uid(), text: "Pedido recibido, pendiente recepción física del lote.", at: ago(30), auto: true }],
-    createdAt: ago(30), updatedAt: ago(30),
-  });
-
-  const o7 = order({
-    code: "OP-2450", product: "iPhone 12", client: "Falabella",
-    channel: "Retail", subchannel: "Marketplace Falabella", category: "Premium",
-    color: "cyan", totalUnits: 60, progress: 0, status: "backlog",
-    requestDate: shiftDays(d[0], -1), deliveryDate: d[9],
-    logs: [{ id: uid(), text: "Cliente solicita gradación estética A/B por unidad.", at: ago(18) }],
-    createdAt: ago(22), updatedAt: ago(18),
-  });
-
-  const o8 = order({
-    code: "OP-2447", product: "Galaxy A52", client: "Tottus",
-    channel: "Mayorista", subchannel: "Lote B2B", category: "Lote Mayorista",
-    color: "sky", totalUnits: 220, progress: 15, status: "revision",
-    requestDate: shiftDays(d[0], -6), deliveryDate: d[11],
-    logs: [{ id: uid(), text: "Recepción completa, diagnóstico en primera estación.", at: ago(40), auto: true }],
-    createdAt: ago(140), updatedAt: ago(40),
-  });
-
-  const o9 = order({
-    code: "OP-2439", product: "iPhone 8", client: "Claro",
-    channel: "Operador", subchannel: "Renovación de flota", category: "Outlet",
-    color: "teal", totalUnits: 90, progress: 100, status: "despacho", archived: true,
-    requestDate: shiftDays(d[0], -15), deliveryDate: d[6],
-    logs: [
-      { id: uid(), text: "Empaque completado: 9 cajas máster de 10 unidades.", at: ago(50), auto: true },
-      { id: uid(), text: "Despacho confirmado — entregado al operador. Pedido finalizado.", at: ago(30), auto: true },
-    ],
-    createdAt: ago(400), updatedAt: ago(30),
-  });
-
-  const o10 = order({
-    code: "OP-2435", product: "Redmi 9A", client: "Ripley",
-    channel: "Retail", subchannel: "Online", category: "Gama Entrada",
-    color: "lime", totalUnits: 160, progress: 52, status: "reacondicionamiento",
-    requestDate: shiftDays(d[0], -10), deliveryDate: d[10],
-    logs: [{ id: uid(), text: "84 unidades reacondicionadas, 76 en línea de reparación.", at: ago(14), auto: true }],
-    createdAt: ago(320), updatedAt: ago(14),
-  });
-
-  const o11 = order({
-    code: "OP-2431", product: "Galaxy M32", client: "Entel",
-    channel: "Corporativo", subchannel: "Flota empresas", category: "Lote Corporativo",
-    color: "cyan", totalUnits: 75, progress: 0, status: "backlog",
-    requestDate: todayISO(), deliveryDate: d[12],
-    logs: [{ id: uid(), text: "Solicitud corporativa nueva, esperar orden de compra firmada.", at: ago(8) }],
-    createdAt: ago(8), updatedAt: ago(8),
-  });
-
-  const o12 = order({
-    code: "OP-2428", product: "iPhone SE 2020", client: "Mercado Libre",
-    channel: "Marketplace", subchannel: "Mercado Libre Full", category: "Premium",
-    color: "orange", totalUnits: 100, progress: 63, status: "qa",
-    requestDate: shiftDays(d[0], -11), deliveryDate: d[5],
-    logs: [{ id: uid(), text: "QA reporta 4 equipos con micrófono fuera de especificación.", at: ago(12) }],
-    createdAt: ago(340), updatedAt: ago(12),
-  });
-
-  const orders = [o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12];
-
-  const chunks: Chunk[] = [
-    chunk(o1.id, d[0], 50, 48), chunk(o1.id, d[1], 50, 48), chunk(o1.id, d[2], 50, 48),
-    chunk(o2.id, d[1], 60, 44),
-    chunk(o3.id, d[0], 30, 40), chunk(o3.id, d[3], 70, 40),
-    chunk(o4.id, d[2], 40, 36),
-    chunk(o5.id, d[7], 75, 30),
-    chunk(o8.id, d[4], 60, 26),
-    chunk(o9.id, d[6], 90, 50),
-    chunk(o10.id, d[5], 60, 22),
-    chunk(o12.id, d[2], 40, 18),
+  const orders: Order[] = [
+    mkOrder("PED-101", "Claro Colombia", "Retail", -6, 5, [{ productId: "p02", qty: 200 }], 0, [
+      { id: "l1", text: "Lote recibido en planta, 200 uds verificadas en recepción.", at: ts(70), auto: true },
+      { id: "l2", text: "Cliente solicita priorizar unidades con pantalla original.", at: ts(30) },
+    ]),
+    mkOrder("PED-102", "Falabella", "Ecommerce", -5, 6, [{ productId: "p06", qty: 150 }], 1),
+    mkOrder("PED-103", "Tigo", "Retail", -4, 7, [{ productId: "p10", qty: 120 }], 2),
+    mkOrder("PED-104", "Almacenes Éxito", "Retail", -4, 8, [
+      { productId: "p01", qty: 80 },
+      { productId: "p08", qty: 40 },
+    ], 3),
+    mkOrder("PED-105", "WOM", "Open Market", -3, 4, [{ productId: "p12", qty: 100 }], 4, [
+      { id: "l3", text: "40 uds detenidas: falla de cámara detectada en QA.", at: ts(20), auto: true },
+    ]),
+    mkOrder("PED-106", "Alkosto", "Open Market", -7, 9, [
+      { productId: "p13", qty: 120 },
+      { productId: "p14", qty: 80 },
+    ], 5),
+    mkOrder("PED-107", "MercadoLibre", "Ecommerce", -9, -1, [{ productId: "p04", qty: 90 }], 6, [
+      { id: "l4", text: "90 uds despachadas — entregado al transportador.", at: ts(26), auto: true },
+    ]),
+    mkOrder("PED-108", "Movistar", "Retail", -2, 9, [{ productId: "p07", qty: 60 }], 7),
+    mkOrder("PED-109", "Claro Colombia", "Tiendas propias", -2, 10, [{ productId: "p05", qty: 45 }], 1),
+    mkOrder("PED-110", "Almacenes Éxito", "SAC", -1, 11, [{ productId: "p11", qty: 150 }], 2),
+    mkOrder("PED-111", "Falabella", "Ecommerce", -1, 12, [{ productId: "p09", qty: 70 }], 3),
+    mkOrder("PED-112", "Tigo", "Otros", 0, 13, [{ productId: "p03", qty: 110 }], 4),
   ];
 
-  const cfg = (techs: number, qa: number, opMin = 480, stopMin = 0): DayConfig => ({
-    techs, qa, opMin, stopMin,
+  let cc = 0;
+  const mkChunk = (
+    orderId: string,
+    date: string,
+    units: number,
+    status: ChunkStatus,
+    extra?: Partial<Chunk>
+  ): Chunk => ({
+    id: `c${++cc}`,
+    orderId,
+    date,
+    units,
+    status,
+    createdAt: ts(48 - cc),
+    ...extra,
   });
 
-  const dayConfigs: Record<string, DayConfig> = {
-    [d[0]]: cfg(6, 2),
-    [d[1]]: cfg(6, 2),
-    [d[2]]: cfg(6, 2),
-    [d[3]]: cfg(7, 3),
-    [d[4]]: cfg(5, 2),
-    [d[5]]: cfg(6, 2, 480, 45),
-    [d[6]]: cfg(6, 2),
-    [d[7]]: cfg(6, 2),
-  };
+  const chunks: Chunk[] = [
+    // PED-101 · 200 uds → 60 en QA (avance 30%), 70 en reacond., 70 sin agendar
+    mkChunk("o1", d(-1), 60, "qa"),
+    mkChunk("o1", d(0), 70, "reacondicionamiento"),
+    // PED-102 · 150 uds → 60 QA (40%), 60 empaque
+    mkChunk("o2", d(0), 60, "qa"),
+    mkChunk("o2", d(1), 60, "empaque"),
+    // PED-103 · 120 uds en primera revisión (día de crunch)
+    mkChunk("o3", d(4), 120, "revision"),
+    // PED-104 · 120 uds → 40 reac / 30 QA (25%) / 30 empaque
+    mkChunk("o4", d(-1), 40, "reacondicionamiento"),
+    mkChunk("o4", d(2), 30, "qa"),
+    mkChunk("o4", d(3), 30, "empaque"),
+    // PED-105 · 100 uds → 40 bloqueadas por falla en QA + 60 en reacond.
+    mkChunk("o5", d(-2), 40, "bloqueado", {
+      prevStatus: "qa",
+      blockReason: "Falla en QA",
+      blockedAt: ts(20),
+    }),
+    mkChunk("o5", d(1), 60, "reacondicionamiento"),
+    // PED-106 · 200 uds → 50 despacho / 50 empaque / 50 QA (25%) / 50 revisión
+    mkChunk("o6", d(-2), 50, "despacho"),
+    mkChunk("o6", d(2), 50, "qa"),
+    mkChunk("o6", d(3), 50, "empaque"),
+    mkChunk("o6", d(4), 50, "revision"),
+    // PED-107 · 90 uds despachadas (permanece en calendario)
+    mkChunk("o7", d(-3), 90, "despacho"),
+  ];
 
-  return { orders, chunks, dayConfigs, createdAt: now() };
+  const dayConfigs: Record<string, DayConfig> = {};
+  for (let i = -4; i <= 9; i++) dayConfigs[d(i)] = { ...DEFAULT_DAY };
+  // Día de crunch: capacidad reducida para evidenciar sobrecarga
+  dayConfigs[d(4)] = { tecnicos: 6, qa: 3, minutos: 510, paradas: 50 };
+
+  return { orders, chunks, dayConfigs };
 }
