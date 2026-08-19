@@ -1,5 +1,5 @@
-export type OrderStatus =
-  | "backlog"
+/** Estado operativo de cada tarjeta/asignación del calendario. */
+export type ChunkStatus =
   | "revision"
   | "reacondicionamiento"
   | "qa"
@@ -24,24 +24,25 @@ export interface Order {
   category: string;
   color: ColorKey;
   totalUnits: number;
-  progress: number; // 0..100
+  progress: number; // 0..100 (avance general del pedido)
   requestDate: string; // ISO date
   deliveryDate: string; // ISO date
-  status: OrderStatus;
-  prevStatus?: OrderStatus;
-  blockReason?: string;
-  blockedAt?: string;
-  archived?: boolean; // despachado confirmado: sale del backlog, sigue en calendario
+  archived?: boolean; // todas sus tarjetas despachadas: sale del backlog, sigue en calendario
   logs: LogEntry[];
   createdAt: string;
   updatedAt: string;
 }
 
+/** Tarjeta / asignación del calendario — el estado vive aquí, no en el pedido. */
 export interface Chunk {
   id: string;
   orderId: string;
   date: string; // ISO date (jornada operativa, nunca domingo)
   units: number;
+  status: ChunkStatus;
+  prevStatus?: ChunkStatus;
+  blockReason?: string;
+  blockedAt?: string;
   createdAt: string;
 }
 
@@ -54,7 +55,7 @@ export interface DayConfig {
 
 export interface Filters {
   client: string; // 'all' o nombre de cliente
-  status: string; // 'all' o OrderStatus
+  status: string; // 'all' o ChunkStatus
   product: string; // 'all' o producto
 }
 
@@ -80,10 +81,9 @@ export const ORDER_COLORS: Record<ColorKey, string> = {
 export const COLOR_KEYS = Object.keys(ORDER_COLORS) as ColorKey[];
 
 export const STATUS_META: Record<
-  OrderStatus,
+  ChunkStatus,
   { label: string; short: string; hex: string }
 > = {
-  backlog: { label: "Pendiente", short: "Pend.", hex: "#7b8590" },
   revision: { label: "Primera Revisión", short: "Revisión", hex: "#0284c7" },
   reacondicionamiento: { label: "Reacondicionamiento", short: "Reac.", hex: "#0d9488" },
   qa: { label: "QA y Limpieza", short: "QA", hex: "#d97706" },
@@ -92,9 +92,8 @@ export const STATUS_META: Record<
   bloqueado: { label: "Bloqueado / Pausa", short: "Bloq.", hex: "#d3382f" },
 };
 
-/** Flujo operativo en orden (para checklist y avance de etapas). */
-export const STATUS_FLOW: OrderStatus[] = [
-  "backlog",
+/** Flujo operativo en orden (para desgloses y leyendas). */
+export const STATUS_FLOW: ChunkStatus[] = [
   "revision",
   "reacondicionamiento",
   "qa",
@@ -102,8 +101,7 @@ export const STATUS_FLOW: OrderStatus[] = [
   "despacho",
 ];
 
-export const FLOW_LABELS: Record<OrderStatus, string> = {
-  backlog: "Pendiente en backlog",
+export const FLOW_LABELS: Record<ChunkStatus, string> = {
   revision: "Primera revisión",
   reacondicionamiento: "Reacondicionamiento",
   qa: "Control de calidad y limpieza",
