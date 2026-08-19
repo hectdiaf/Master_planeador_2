@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Ban,
@@ -217,7 +218,6 @@ function CardPill({
       </div>
 
       <p className="truncate text-[12.5px] font-bold leading-tight">{order.client}</p>
-      <p className="truncate text-[11px] text-mut">{order.product}</p>
 
       <div className="mt-1.5 flex items-center justify-between gap-1">
         <span className="font-mono text-[11px] font-bold tabular">
@@ -238,21 +238,22 @@ function CardPill({
         </p>
       )}
 
-      {popOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-[65]"
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePop();
-            }}
-          />
-          <div
-            className="fixed z-[70] w-64 rounded-xl border border-line bg-panel p-3 text-left shadow-pop animate-pop"
-            style={{ top: popPos?.top ?? 0, left: popPos?.left ?? 0 }}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
+      {popOpen &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[65]"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePop();
+              }}
+            />
+            <div
+              className="fixed z-[70] w-64 rounded-xl border border-line bg-panel p-3 text-left shadow-pop animate-pop"
+              style={{ top: popPos?.top ?? 0, left: popPos?.left ?? 0 }}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10.5px] font-bold text-mut">{order.code}</span>
               <Badge status={chunk.status} size="sm" />
@@ -343,9 +344,10 @@ function CardPill({
                 Bloquear tarjeta
               </button>
             )}
-          </div>
-        </>
-      )}
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }

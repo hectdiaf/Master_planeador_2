@@ -63,10 +63,9 @@ function BacklogCard({
           <GripVertical size={14} />
         </button>
         <div className="min-w-0 flex-1">
-          <span className="font-mono text-[10px] font-bold text-mut">{o.code}</span>
-          <p className="truncate text-[12.5px] font-bold leading-tight">{o.product}</p>
+          <p className="truncate text-[13px] font-bold leading-tight">{o.client}</p>
           <p className="truncate text-[11px] text-mut">
-            {o.client} · {o.channel}
+            {o.code} · {o.channel}
           </p>
         </div>
         <div className="flex flex-col items-center gap-[2px]" title={`Avance = unidades en QA ÷ totales (${fmtNum(qaUnits)}/${fmtNum(o.totalUnits)})`}>
@@ -93,39 +92,7 @@ function BacklogCard({
 
       {!o.archived && (
         <>
-          <div className="mt-2 grid grid-cols-2 gap-x-2.5 gap-y-1.5 border-t border-line/70 pt-2">
-            <div className="col-span-2 flex items-center justify-between rounded-md bg-raise/70 px-2 py-1">
-              <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
-                Avance (uds en QA)
-              </span>
-              <span className="font-mono text-[10.5px] font-bold tabular text-accent">
-                {progress}% · {fmtNum(qaUnits)}/{fmtNum(o.totalUnits)}
-              </span>
-            </div>
-            <div>
-              <span className="mb-0.5 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
-                F. solicitud
-              </span>
-              <input
-                type="date"
-                value={o.requestDate}
-                onChange={(e) => e.target.value && api.updateOrder(o.id, { requestDate: e.target.value }, "Fecha de solicitud modificada.")}
-                className={inputCls + " !py-1 !text-[11.5px]"}
-              />
-            </div>
-            <div>
-              <span className="mb-0.5 block text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">
-                F. entrega tent.
-              </span>
-              <input
-                type="date"
-                value={o.deliveryDate}
-                onChange={(e) => e.target.value && api.updateOrder(o.id, { deliveryDate: e.target.value }, "Fecha tentativa de entrega modificada.")}
-                className={inputCls + " !py-1 !text-[11.5px]"}
-              />
-            </div>
-          </div>
-          <p className="mt-1.5 rounded-md bg-raise/70 px-2 py-1 text-[10px] leading-snug text-faint">
+          <p className="mt-2 rounded-md bg-raise/70 px-2 py-1.5 text-[10px] leading-snug text-faint">
             El estado se gestiona por tarjeta: cada asignación del calendario avanza
             en su propio proceso.
           </p>
