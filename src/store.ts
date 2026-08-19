@@ -21,25 +21,35 @@ export interface PlannerState {
 export const DEFAULT_DAY_CONFIG: DayConfig = {
   techs: 10,
   qa: 5,
-  opMin: 480,
-  stopMin: 45,
+  opMin: 510,
+  stopMin: 50,
 };
+
+/**
+ * Horas efectivas del turno: 7:40 → 17:00 = 560 min de jornada,
+ * menos 50 min inactivos (30 almuerzo + 20 descanso) = 510 min = 8.5 h.
+ */
+export const SHIFT_EFF_HOURS = 8.5;
 
 export interface Capacity {
   techCap: number;
   qaCap: number;
   cap: number;
   effMin: number;
+  /** Producción por hora efectiva = C_total / 8.5 */
+  pHora: number;
 }
 
 export function capacityOf(cfg: DayConfig): Capacity {
   const techCap = cfg.techs * TECH_RATE;
   const qaCap = cfg.qa * QA_RATE;
+  const cap = Math.min(techCap, qaCap);
   return {
     techCap,
     qaCap,
-    cap: Math.min(techCap, qaCap),
+    cap,
     effMin: Math.max(0, cfg.opMin - cfg.stopMin),
+    pHora: cap / SHIFT_EFF_HOURS,
   };
 }
 
@@ -89,7 +99,7 @@ export interface PlannerApi {
   setDayConfig(date: string, patch: Partial<DayConfig>): void;
 }
 
-const STORAGE_KEY = "po-planner-v4";
+const STORAGE_KEY = "po-planner-v5";
 
 function loadState(): PlannerState {
   try {

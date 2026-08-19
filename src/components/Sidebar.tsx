@@ -13,7 +13,7 @@ import { useDraggable } from "@dnd-kit/core";
 import type { Chunk, DayConfig, Order } from "../types";
 import { ORDER_COLORS } from "../types";
 import { colDate, fmtNum, orderProgress, pctColor, todayISO } from "../lib";
-import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
+import { DEFAULT_DAY_CONFIG, SHIFT_EFF_HOURS, capacityOf, type PlannerApi } from "../store";
 import { Ring, Stepper, inputCls } from "./ui";
 
 export type Tab = "backlog" | "capacidad";
@@ -366,10 +366,15 @@ export function Sidebar({
             </span>
           </div>
 
+          <div className="mt-2 rounded-md border border-accent/30 bg-accent/[0.06] px-2.5 py-1.5 text-[10.5px] leading-snug text-mut">
+            <span className="font-bold text-accent">Turno 7:40 a. m. – 5:00 p. m.</span>{" "}
+            · 50 min inactivos (30 almuerzo + 20 descanso) → 510 min = 8.5 h efectivas.
+          </div>
+
           <div className="mt-2 flex flex-col gap-3 rounded-lg border border-line bg-raise/50 p-3">
             <NumField
               label="N° de técnicos"
-              hint="Capacidad base: 15 teléfonos/día por técnico"
+              hint="15 teléfonos por turno por técnico"
               value={cfg.techs}
               onChange={(v) => api.setDayConfig(activeDay, { techs: v })}
               min={0}
@@ -378,7 +383,7 @@ export function Sidebar({
             />
             <NumField
               label="N° de QA / Calidad"
-              hint="Capacidad base: 45 unidades/día por persona"
+              hint="45 unidades por turno por persona"
               value={cfg.qa}
               onChange={(v) => api.setDayConfig(activeDay, { qa: v })}
               min={0}
@@ -387,7 +392,7 @@ export function Sidebar({
             />
             <NumField
               label="Minutos operativos / día"
-              hint="Ej. 480 min por jornada"
+              hint="510 min = 8.5 h efectivas del turno"
               value={cfg.opMin}
               onChange={(v) => api.setDayConfig(activeDay, { opMin: v })}
               min={60}
@@ -396,8 +401,8 @@ export function Sidebar({
               unit="min"
             />
             <NumField
-              label="Paradas no programadas"
-              hint="Cuellos de botella / paradas del día"
+              label="Paradas / cuello de botella"
+              hint="Paradas no programadas del día"
               value={cfg.stopMin}
               onChange={(v) => api.setDayConfig(activeDay, { stopMin: v })}
               min={0}
@@ -409,29 +414,31 @@ export function Sidebar({
 
           <div className="mt-2.5 rounded-lg border border-line bg-panel p-3">
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
-              Cálculo automático del día
+              Cálculo de capacidad instalada
             </span>
             <div className="mt-1.5 flex flex-col gap-1 font-mono text-[11.5px] tabular">
-              <div className="flex justify-between">
-                <span className="text-mut">Capacidad técnicos</span>
+              <div className="flex items-center justify-between">
+                <span className="text-mut">C_técnicos = N × 15</span>
                 <span className="font-bold">{fmtNum(cap.techCap)} uds</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-mut">Capacidad QA</span>
+              <div className="flex items-center justify-between">
+                <span className="text-mut">C_calidad = N × 45</span>
                 <span className="font-bold">{fmtNum(cap.qaCap)} uds</span>
               </div>
-              <div className="flex justify-between border-t border-line pt-1">
-                <span className="text-mut">Capacidad instalada (mín)</span>
+              <div className="flex items-center justify-between border-t border-line pt-1">
+                <span className="text-mut">C_total = mín(téc, cal)</span>
                 <span className="font-bold text-accent">{fmtNum(cap.cap)} uds</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-mut">Minutos efectivos</span>
-                <span className="font-bold">{fmtNum(cap.effMin)} min</span>
+              <div className="flex items-center justify-between">
+                <span className="text-mut">P_hora = C_total ÷ {SHIFT_EFF_HOURS}</span>
+                <span className="font-bold">
+                  {cap.pHora.toLocaleString("es", { maximumFractionDigits: 1 })} uds/h
+                </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex items-center justify-between border-t border-line pt-1">
                 <span className="text-mut">Ocupación planeada</span>
                 <span className="font-bold" style={{ color: hex }}>
-                  {fmtNum(assignedByDay[activeDay] ?? 0)} uds · {Math.round(pct)}%
+                  {fmtNum(assignedByDay[activeDay] ?? 0)} / {fmtNum(cap.cap)} · {Math.round(pct)}%
                 </span>
               </div>
             </div>

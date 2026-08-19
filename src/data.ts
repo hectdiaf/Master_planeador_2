@@ -2,7 +2,7 @@ import type { Channel, Chunk, ChunkStatus, DayConfig, Order } from "./types";
 import { uid } from "./types";
 import { businessDaysFrom, shiftDays, todayISO } from "./lib";
 
-const base: DayConfig = { techs: 10, qa: 5, opMin: 480, stopMin: 45 };
+const base: DayConfig = { techs: 10, qa: 5, opMin: 510, stopMin: 50 };
 const D = businessDaysFrom(todayISO(), 10);
 const now = new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
@@ -161,9 +161,9 @@ export function makeSeed(): {
 
   const dayConfigs: Record<string, DayConfig> = {};
   for (const d of D) dayConfigs[d] = { ...base };
-  dayConfigs[D[0]] = { techs: 20, qa: 7, opMin: 480, stopMin: 30 };
-  dayConfigs[D[1]] = { techs: 18, qa: 6, opMin: 480, stopMin: 45 };
-  dayConfigs[D[2]] = { techs: 16, qa: 5, opMin: 480, stopMin: 50 };
+  dayConfigs[D[0]] = { techs: 20, qa: 7, opMin: 510, stopMin: 30 };
+  dayConfigs[D[1]] = { techs: 18, qa: 6, opMin: 510, stopMin: 45 };
+  dayConfigs[D[2]] = { techs: 16, qa: 5, opMin: 510, stopMin: 50 };
 
   return { orders, chunks, dayConfigs };
 }
