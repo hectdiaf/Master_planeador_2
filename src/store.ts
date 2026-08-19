@@ -107,7 +107,7 @@ export interface PlannerApi {
   setDayConfig(date: string, patch: Partial<DayConfig>): void;
 }
 
-const STORAGE_KEY = "po-planner-v5";
+const STORAGE_KEY = "po-planner-v6";
 
 function loadState(): PlannerState {
   try {

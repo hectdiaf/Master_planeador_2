@@ -64,14 +64,14 @@ export function makeSeed(): {
   const o1 = mkOrder(
     "PED-2401", "Claro Colombia", "Open Market", "teal",
     [
-      { name: "iPhone 12 64GB", qty: 160 },
-      { name: "iPhone 12 128GB", qty: 40 },
+      { name: "iPhone 12 64GB", qty: 120 },
+      { name: "iPhone 12 128GB", qty: 80 },
     ],
     { requestDate: shiftDays(D[0], -6), deliveryDate: shiftDays(D[0], 7) }
   );
   const o2 = mkOrder(
     "PED-2402", "Movistar", "Open Market", "sky",
-    [{ name: "Galaxy S21 128GB", qty: 150 }],
+    [{ name: "Galaxy S21 128GB", qty: 100 }],
     { requestDate: shiftDays(D[0], -5), deliveryDate: shiftDays(D[0], 8) }
   );
   const o3 = mkOrder(
@@ -96,7 +96,7 @@ export function makeSeed(): {
   );
   const o7 = mkOrder(
     "PED-2407", "Claro Colombia", "SAC", "cyan",
-    [{ name: "Moto G60", qty: 180 }],
+    [{ name: "Moto G60", qty: 40 }],
     { requestDate: shiftDays(D[0], -12), deliveryDate: shiftDays(D[0], 1), archived: true }
   );
   const o8 = mkOrder(
@@ -133,39 +133,36 @@ export function makeSeed(): {
     C(o1, D[1], 50, "qa"),
     C(o1, D[2], 50, "empaque"),
     // PED-2402
-    C(o2, D[1], 60, "qa"),
-    C(o2, D[3], 40, "revision"),
+    C(o2, D[1], 45, "qa"),
+    C(o2, D[3], 30, "revision"),
     // PED-2403
-    C(o3, D[0], 100, "empaque"),
+    C(o3, D[0], 70, "empaque"),
     // PED-2404
-    C(o4, D[2], 120, "revision"),
-    C(o4, D[4], 80, "revision"),
+    C(o4, D[2], 60, "revision"),
+    C(o4, D[4], 40, "revision"),
     // PED-2406: una tarjeta bloqueada, otra en curso
-    C(o6, D[1], 90, "reacondicionamiento"),
-    C(o6, D[4], 60, "bloqueado", {
+    C(o6, D[1], 30, "reacondicionamiento"),
+    C(o6, D[4], 30, "bloqueado", {
       prevStatus: "reacondicionamiento",
       blockReason: "Falta de repuestos",
       blockedAt: ago(1),
     }),
     // PED-2407: finalizado
-    C(o7, D[0], 180, "despacho"),
+    C(o7, D[0], 40, "despacho"),
     // PED-2408
     C(o8, D[3], 40, "revision"),
     // PED-2409
-    C(o9, D[2], 70, "qa"),
-    C(o9, D[5], 40, "reacondicionamiento"),
+    C(o9, D[2], 25, "qa"),
+    C(o9, D[5], 20, "reacondicionamiento"),
     // PED-2410
-    C(o10, D[5], 100, "reacondicionamiento"),
-    C(o10, D[6], 100, "revision"),
+    C(o10, D[5], 60, "reacondicionamiento"),
+    C(o10, D[6], 50, "revision"),
   ];
 
+  // Todos los días con la configuración por defecto:
+  // 10 técnicos · 5 QA · 510 min operativos · 50 min de paradas.
   const dayConfigs: Record<string, DayConfig> = {};
   for (const d of D) dayConfigs[d] = { ...base };
-  dayConfigs[D[0]] = { techs: 20, qa: 7, opMin: 510, stopMin: 20 };
-  dayConfigs[D[1]] = { techs: 16, qa: 6, opMin: 510, stopMin: 40 };
-  dayConfigs[D[2]] = { techs: 18, qa: 6, opMin: 510, stopMin: 45 };
-  dayConfigs[D[4]] = { techs: 12, qa: 5, opMin: 510, stopMin: 50 };
-  dayConfigs[D[5]] = { techs: 11, qa: 5, opMin: 510, stopMin: 50 };
 
   return { orders, chunks, dayConfigs };
 }

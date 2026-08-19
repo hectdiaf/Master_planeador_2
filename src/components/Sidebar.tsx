@@ -366,17 +366,6 @@ export function Sidebar({
             </span>
           </div>
 
-          <div className="mt-2 rounded-md border border-accent/30 bg-accent/[0.06] px-2.5 py-1.5 text-[10.5px] leading-snug text-mut">
-            <span className="font-bold text-accent">Turno 7:40 a. m. – 5:00 p. m.</span>{" "}
-            · base 510 min (8.5 h). Este día:{" "}
-            <span className="font-bold tabular text-ink">{cap.effMin} min efectivos</span>{" "}
-            → la capacidad se escala{" "}
-            <span className={`font-bold tabular ${cap.scale < 1 ? "text-warn" : "text-ok"}`}>
-              ×{(cap.scale * 100).toFixed(0)}%
-            </span>
-            {cap.scale < 1 && " — menos tiempo, menos producción"}.
-          </div>
-
           <div className="mt-2 flex flex-col gap-3 rounded-lg border border-line bg-raise/50 p-3">
             <NumField
               label="N° de técnicos"
@@ -403,7 +392,7 @@ export function Sidebar({
               onChange={(v) => api.setDayConfig(activeDay, { opMin: v })}
               min={60}
               max={1440}
-              step={15}
+              step={5}
               unit="min"
             />
             <NumField
