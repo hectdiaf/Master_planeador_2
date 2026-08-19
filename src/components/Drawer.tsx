@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, CalendarDays, Pencil, Send, Unlock, X } from "lucide-react";
 import type { Chunk, ChunkStatus, Order } from "../types";
 import { ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
-import { fmtDateTime, fmtMedium, fmtNum, orderProgress, orderQaUnits } from "../lib";
+import { fmtDateTime, fmtMedium, fmtNum, orderDoneUnits, orderProgress } from "../lib";
 import type { PlannerApi } from "../store";
 import { Badge } from "./ui";
 
@@ -36,8 +36,8 @@ export function Drawer({
   const accent = ORDER_COLORS[order.color];
   const assigned = chunks.reduce((a, c) => a + c.units, 0);
   const blockedChunks = chunks.filter((c) => c.status === "bloqueado");
-  const qaUnits = orderQaUnits(chunks);
-  const progress = orderProgress(order.totalUnits, qaUnits);
+  const doneUnits = orderDoneUnits(chunks);
+  const progress = orderProgress(order.totalUnits, doneUnits);
 
   const byStatus = (s: ChunkStatus) =>
     chunks.filter((c) => c.status === s).reduce((a, c) => a + c.units, 0);
@@ -57,8 +57,8 @@ export function Drawer({
         <span className="mt-1 h-9 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <h2 className="font-display text-[17px] font-bold uppercase leading-tight tracking-wide">
-              {order.code}
+            <h2 className="truncate font-display text-[17px] font-bold uppercase leading-tight tracking-wide">
+              {order.client}
             </h2>
             {order.archived && (
               <span className="rounded-full bg-ok/15 px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider text-ok">
@@ -66,9 +66,8 @@ export function Drawer({
               </span>
             )}
           </div>
-          <p className="truncate text-[13.5px] font-semibold">{order.product}</p>
-          <p className="mt-0.5 truncate text-[11px] text-mut">
-            {order.client} · {order.channel}
+          <p className="mt-0.5 truncate font-mono text-[11px] font-semibold tabular text-mut">
+            {order.code} <span className="font-sans font-medium text-faint">· {order.channel}</span>
           </p>
         </div>
         <button
@@ -197,7 +196,7 @@ export function Drawer({
                 {progress}%
               </span>
               <span className="font-mono text-[10.5px] tabular text-mut">
-                {fmtNum(qaUnits)} uds en QA / {fmtNum(order.totalUnits)}
+                {fmtNum(doneUnits)} / {fmtNum(order.totalUnits)} uds
               </span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-paper">
@@ -206,9 +205,19 @@ export function Drawer({
                 style={{ width: `${progress}%` }}
               />
             </div>
+            <div className="mt-2 flex items-center gap-3 text-[10.5px] text-mut">
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_META.qa.hex }} />
+                {fmtNum(byStatus("qa"))} en QA
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_META.empaque.hex }} />
+                {fmtNum(byStatus("empaque"))} en Empaque
+              </span>
+            </div>
             <p className="mt-1.5 text-[10px] leading-snug text-faint">
-              Cálculo automático: (unidades en QA ÷ unidades totales) × 100 — se
-              actualiza al cambiar el estado de las tarjetas.
+              Cálculo automático: (uds en QA + uds en Empaque) ÷ unidades totales ×
+              100 — se actualiza al cambiar el estado de las tarjetas.
             </p>
           </div>
         </section>

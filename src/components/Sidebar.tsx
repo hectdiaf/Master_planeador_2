@@ -21,7 +21,7 @@ export type Tab = "backlog" | "capacidad";
 function BacklogCard({
   o,
   sched,
-  qaUnits,
+  doneUnits,
   api,
   notify,
   onEditOrder,
@@ -30,7 +30,7 @@ function BacklogCard({
 }: {
   o: Order;
   sched: number;
-  qaUnits: number;
+  doneUnits: number;
   api: PlannerApi;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
   onEditOrder: (id: string) => void;
@@ -43,7 +43,7 @@ function BacklogCard({
   const [armed, setArmed] = useState(false);
   const accent = ORDER_COLORS[o.color];
   const remaining = Math.max(0, o.totalUnits - sched);
-  const progress = orderProgress(o.totalUnits, qaUnits);
+  const progress = orderProgress(o.totalUnits, doneUnits);
 
   return (
     <div
@@ -68,9 +68,9 @@ function BacklogCard({
             {o.code} · {o.channel}
           </p>
         </div>
-        <div className="flex flex-col items-center gap-[2px]" title={`Avance = unidades en QA ÷ totales (${fmtNum(qaUnits)}/${fmtNum(o.totalUnits)})`}>
+        <div className="flex flex-col items-center gap-[2px]" title={`Avance = (QA + Empaque) ÷ totales (${fmtNum(doneUnits)}/${fmtNum(o.totalUnits)})`}>
           <Ring value={progress} size={34} color={accent} />
-          <span className="font-mono text-[8px] uppercase tracking-wider text-faint">QA</span>
+          <span className="font-mono text-[8px] uppercase tracking-wider text-faint">Avance</span>
         </div>
       </div>
 
@@ -92,11 +92,6 @@ function BacklogCard({
 
       {!o.archived && (
         <>
-          <p className="mt-2 rounded-md bg-raise/70 px-2 py-1.5 text-[10px] leading-snug text-faint">
-            El estado se gestiona por tarjeta: cada asignación del calendario avanza
-            en su propio proceso.
-          </p>
-
           <div className="mt-2 flex items-center gap-1.5">
             {remaining > 0 && (
               <button
@@ -220,9 +215,11 @@ export function Sidebar({
     return m;
   }, [chunks]);
 
-  const qaByOrder = useMemo(() => {
+  const doneByOrder = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const c of chunks) if (c.status === "qa") m[c.orderId] = (m[c.orderId] ?? 0) + c.units;
+    for (const c of chunks)
+      if (c.status === "qa" || c.status === "empaque")
+        m[c.orderId] = (m[c.orderId] ?? 0) + c.units;
     return m;
   }, [chunks]);
 
@@ -306,7 +303,7 @@ export function Sidebar({
                 key={o.id}
                 o={o}
                 sched={scheduled[o.id] ?? 0}
-                qaUnits={qaByOrder[o.id] ?? 0}
+                doneUnits={doneByOrder[o.id] ?? 0}
                 api={api}
                 notify={notify}
                 onEditOrder={onEditOrder}
