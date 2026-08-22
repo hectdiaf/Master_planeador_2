@@ -9,7 +9,7 @@ import type {
   OrderProduct,
 } from "./types";
 import { COLOR_KEYS, QA_RATE, STATUS_META, TECH_RATE, clamp, uid } from "./types";
-import { fmtMedium } from "./lib";
+import { fmtMedium, nextBiz } from "./lib";
 import { makeSeed } from "./data";
 
 export interface PlannerState {
@@ -104,8 +104,17 @@ export interface PlannerApi {
   moveChunk(chunkId: string, date: string): void;
   splitChunk(chunkId: string, parts: { date: string; units: number }[]): void;
   removeChunk(chunkId: string): void;
+  /** Mueve el mismo lote al siguiente proceso y al siguiente día hábil. */
+  advanceChunk(chunkId: string): void;
   setDayConfig(date: string, patch: Partial<DayConfig>): void;
 }
+
+/** Siguiente paso del flujo operativo para cada estado. */
+export const NEXT_STEP: Partial<Record<ChunkStatus, ChunkStatus>> = {
+  revision: "reacondicionamiento",
+  reacondicionamiento: "qa",
+  qa: "empaque",
+};
 
 const STORAGE_KEY = "po-planner-v6";
 
@@ -416,6 +425,27 @@ export function usePlanner(): PlannerState & {
           const next = { ...s, chunks: s.chunks.filter((x) => x.id !== chunkId) };
           return patchOrder(next, c.orderId, (o) =>
             withLog(o, `Se quitaron ${c.units} uds del ${fmtMedium(c.date)}.`)
+          );
+        });
+      },
+
+      advanceChunk(chunkId) {
+        setState((s) => {
+          const c = s.chunks.find((x) => x.id === chunkId);
+          const nextStatus = c ? NEXT_STEP[c.status] : undefined;
+          if (!c || !nextStatus) return s;
+          const date = nextBiz(c.date);
+          const next = {
+            ...s,
+            chunks: s.chunks.map((x) =>
+              x.id === chunkId ? { ...x, status: nextStatus, date } : x
+            ),
+          };
+          return patchOrder(next, c.orderId, (o) =>
+            withLog(
+              o,
+              `Lote de ${c.units} uds avanzado → ${STATUS_META[nextStatus].label} · ${fmtMedium(date)}.`
+            )
           );
         });
       },

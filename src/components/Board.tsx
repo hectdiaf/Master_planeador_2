@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Ban,
   Check,
+  MoveRight,
   Pencil,
   Scissors,
   Settings2,
@@ -13,8 +14,8 @@ import {
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Chunk, ChunkStatus, DayConfig, Order } from "../types";
 import { FLOW_LABELS, ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
-import { colDate, fmtNum, pctColor } from "../lib";
-import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
+import { colDate, fmtNum, nextBiz, pctColor } from "../lib";
+import { DEFAULT_DAY_CONFIG, NEXT_STEP, capacityOf, type PlannerApi } from "../store";
 import { Badge, Stepper } from "./ui";
 
 function DayColumn({
@@ -137,6 +138,7 @@ function CardPill({
   onBlockChunk,
   onDespachoChunk,
   onRemoveChunk,
+  onAdvance,
   notify,
 }: {
   chunk: Chunk;
@@ -149,6 +151,7 @@ function CardPill({
   onBlockChunk: () => void;
   onDespachoChunk: () => void;
   onRemoveChunk: () => void;
+  onAdvance: () => void;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -160,6 +163,14 @@ function CardPill({
   const blocked = chunk.status === "bloqueado";
   const done = chunk.status === "despacho";
 
+  // Siguiente paso del flujo: mismas unidades, siguiente proceso, siguiente día hábil.
+  const nextStatus = NEXT_STEP[chunk.status];
+  const advanceDate = nextBiz(chunk.date);
+  const ac = colDate(advanceDate);
+  const advanceLabel = nextStatus
+    ? `${STATUS_META[nextStatus].short} · ${ac.dow} ${ac.dnum}`
+    : "";
+
   // Popover en capa fija (por encima de todas las tarjetas/columnas, sin recortes).
   const togglePop = () => {
     if (popOpen) {
@@ -170,7 +181,7 @@ function CardPill({
     const r = pillRef.current?.getBoundingClientRect();
     if (r) {
       const W = 256;
-      const H = 348;
+      const H = 396;
       const left = Math.min(Math.max(8, r.right - W), window.innerWidth - W - 8);
       const top =
         r.bottom + H + 12 > window.innerHeight
@@ -298,6 +309,20 @@ function CardPill({
               ))}
             </select>
 
+            {nextStatus && !blocked && !done && (
+              <button
+                onClick={() => {
+                  togglePop();
+                  onAdvance();
+                }}
+                title={`Las mismas ${chunk.units} uds pasan a ${STATUS_META[nextStatus].label} el ${ac.dowLong} ${ac.dnum} ${ac.mon}`}
+                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-accent/55 bg-accent/[0.1] px-2 py-2 text-[11.5px] font-bold text-accent transition hover:bg-accent/[0.18] active:scale-[0.98]"
+              >
+                <MoveRight size={13} />
+                Avanzar flujo → {advanceLabel}
+              </button>
+            )}
+
             <div className="mt-2.5 grid grid-cols-2 gap-1.5">
               <button
                 onClick={() => {
@@ -366,6 +391,7 @@ export function Board({
   onBlockChunk,
   onDespachoChunk,
   onRemoveChunk,
+  onAdvance,
   onGear,
   onAssignOrder,
 }: {
@@ -382,6 +408,7 @@ export function Board({
   onBlockChunk: (chunkId: string) => void;
   onDespachoChunk: (chunkId: string) => void;
   onRemoveChunk: (chunkId: string) => void;
+  onAdvance: (chunkId: string) => void;
   onGear: (date: string) => void;
   onAssignOrder: (orderId: string, date: string) => void;
 }) {
@@ -434,6 +461,7 @@ export function Board({
                       onBlockChunk={() => onBlockChunk(c.id)}
                       onDespachoChunk={() => onDespachoChunk(c.id)}
                       onRemoveChunk={() => onRemoveChunk(c.id)}
+                      onAdvance={() => onAdvance(c.id)}
                       notify={notify}
                     />
                   );

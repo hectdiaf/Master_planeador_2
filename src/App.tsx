@@ -9,9 +9,17 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { Chunk, Filters, Order } from "./types";
-import { uid } from "./types";
+import { STATUS_META, uid } from "./types";
 import { buildWindow, fmtMedium, fmtNum, fmtRange, nextBiz, prevBiz, todayISO } from "./lib";
-import { loadTheme, saveTheme, usePlanner, type OrderInput } from "./store";
+import {
+  DEFAULT_DAY_CONFIG,
+  NEXT_STEP,
+  capacityOf,
+  loadTheme,
+  saveTheme,
+  usePlanner,
+  type OrderInput,
+} from "./store";
 import { Navbar } from "./components/Navbar";
 import { Toolbar } from "./components/Toolbar";
 import { Sidebar, type Tab } from "./components/Sidebar";
@@ -126,6 +134,27 @@ export default function App() {
     for (const c of chunks) m[c.date] = (m[c.date] ?? 0) + c.units;
     return m;
   }, [chunks]);
+
+  // Avanzar flujo: el mismo lote pasa al siguiente proceso, al siguiente día hábil.
+  const handleAdvance = useCallback(
+    (chunkId: string) => {
+      const c = chunks.find((x) => x.id === chunkId);
+      const next = c ? NEXT_STEP[c.status] : undefined;
+      if (!c || !next) return;
+      const date = nextBiz(c.date);
+      const cap = capacityOf(dayConfigs[date] ?? DEFAULT_DAY_CONFIG).cap;
+      const load = (assignedByDate[date] ?? 0) + c.units;
+      const pct = cap > 0 ? Math.round((load / cap) * 100) : 0;
+      api.advanceChunk(chunkId);
+      notify(
+        `${fmtNum(c.units)} uds → ${STATUS_META[next].label} · ${fmtMedium(date)}${
+          pct > 100 ? ` (día al ${pct}% de capacidad)` : ""
+        }`,
+        pct > 100 ? "warn" : "ok"
+      );
+    },
+    [chunks, dayConfigs, assignedByDate, api, notify]
+  );
 
   const activeOrders = useMemo(() => orders.filter((o) => !o.archived), [orders]);
   const finalizedCount = orders.length - activeOrders.length;
@@ -274,6 +303,7 @@ export default function App() {
                   api.removeChunk(chunkId);
                   notify("Tarjeta retirada del día.", "warn");
                 }}
+                onAdvance={handleAdvance}
                 onGear={() => {
                   setTab("capacidad");
                   setCollapsed(false);
