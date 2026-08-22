@@ -43,7 +43,7 @@ type ModalState =
   | null;
 
 export default function App() {
-  const { orders, chunks, dayConfigs, api, canUndo, undo } = usePlanner();
+  const { orders, chunks, dayConfigs, api, canUndo, undo, sync } = usePlanner();
   const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
   const [anchor, setAnchor] = useState(todayISO());
   const [filters, setFilters] = useState<Filters>({
@@ -241,6 +241,7 @@ export default function App() {
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         canUndo={canUndo}
         onUndo={handleUndo}
+        sync={sync}
       />
 
       <div className="flex min-h-0 flex-1 flex-col">

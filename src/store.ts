@@ -11,6 +11,12 @@ import type {
 import { COLOR_KEYS, QA_RATE, STATUS_META, TECH_RATE, clamp, uid } from "./types";
 import { fmtMedium, nextBiz } from "./lib";
 import { makeSeed } from "./data";
+import {
+  probeCloud,
+  pushCloudState,
+  type CloudSnapshot,
+  type SyncInfo,
+} from "./services/plannerApi";
 
 export interface PlannerState {
   orders: Order[];
@@ -151,16 +157,22 @@ const withLog = (o: Order, text: string): Order => {
 
 export const UNDO_LIMIT = 40;
 
+const SYNC_DEBOUNCE_MS = 900;
+
 export function usePlanner(): PlannerState & {
   api: PlannerApi;
   canUndo: boolean;
   undo: () => boolean;
+  sync: SyncInfo;
 } {
   const [state, setState] = useState<PlannerState>(loadState);
   const [canUndo, setCanUndo] = useState(false);
+  const [sync, setSync] = useState<SyncInfo>({ mode: "off", status: "idle", lastSyncAt: null });
   const historyRef = useRef<PlannerState[]>([]);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const cloudOkRef = useRef(false);
+  const syncTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     try {
@@ -168,6 +180,41 @@ export function usePlanner(): PlannerState & {
     } catch {
       /* sin espacio: ignorar */
     }
+  }, [state]);
+
+  // Al arranque: si el backend está disponible, la nube es la verdad inicial.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const probe = await probeCloud();
+      if (cancelled) return;
+      if (probe.kind === "off") return; // entorno local: solo localStorage
+      cloudOkRef.current = true;
+      setSync({ mode: "on", status: "synced", lastSyncAt: new Date().toISOString() });
+      if (probe.kind === "data") setState(probe.state as PlannerState);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Cada cambio se persiste en la nube (con rebote), sin bloquear la UI.
+  useEffect(() => {
+    if (!cloudOkRef.current) return;
+    setSync((s) => ({ ...s, mode: "on", status: "syncing" }));
+    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(async () => {
+      const ok = await pushCloudState(stateRef.current as unknown as CloudSnapshot);
+      setSync((s) => ({
+        ...s,
+        mode: "on",
+        status: ok ? "synced" : "error",
+        lastSyncAt: ok ? new Date().toISOString() : s.lastSyncAt,
+      }));
+    }, SYNC_DEBOUNCE_MS);
+    return () => {
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    };
   }, [state]);
 
   /** Aplica un cambio guardando antes una instantánea para poder deshacerlo. */
@@ -480,7 +527,7 @@ export function usePlanner(): PlannerState & {
     };
   }, []);
 
-  return { ...state, api, canUndo, undo };
+  return { ...state, api, canUndo, undo, sync };
 }
 
 export function loadTheme(): "light" | "dark" {

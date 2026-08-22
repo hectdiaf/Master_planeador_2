@@ -2,8 +2,56 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { Moon, Search, Sun, Undo2 } from "lucide-react";
 import type { Order } from "../types";
 import { ORDER_COLORS } from "../types";
-import { fmtLong, todayISO } from "../lib";
+import { fmtLong, fmtTime, todayISO } from "../lib";
+import type { SyncInfo } from "../services/plannerApi";
 import { Badge } from "./ui";
+
+function SyncBadge({ sync }: { sync: SyncInfo }) {
+  if (sync.mode === "off") {
+    return (
+      <span
+        title="Modo local: los datos se guardan en este navegador (localStorage)."
+        className="hidden items-center gap-1.5 rounded-full border border-line bg-raise px-2.5 py-1 text-[10.5px] font-semibold text-mut md:flex"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-faint" />
+        Local
+      </span>
+    );
+  }
+  if (sync.status === "syncing") {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 text-[10.5px] font-bold text-warn">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
+        Sincronizando…
+      </span>
+    );
+  }
+  if (sync.status === "error") {
+    return (
+      <span
+        title="No se pudo guardar en la nube; los datos siguen seguros en este navegador."
+        className="flex items-center gap-1.5 rounded-full border border-danger/40 bg-danger/10 px-2.5 py-1 text-[10.5px] font-bold text-danger"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-danger" />
+        Sin nube
+      </span>
+    );
+  }
+  return (
+    <span
+      title="Plan sincronizado con la nube (Vercel KV)."
+      className="flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok/10 px-2.5 py-1 text-[10.5px] font-bold text-ok transition"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-ok" />
+      Sincronizado
+      {sync.lastSyncAt && (
+        <span className="font-mono font-medium tabular opacity-80">
+          · {fmtTime(sync.lastSyncAt)}
+        </span>
+      )}
+    </span>
+  );
+}
 
 function BrandMark() {
   return (
@@ -25,6 +73,7 @@ export function Navbar({
   onToggleTheme,
   canUndo,
   onUndo,
+  sync,
 }: {
   query: string;
   setQuery: (q: string) => void;
@@ -34,6 +83,7 @@ export function Navbar({
   onToggleTheme: () => void;
   canUndo: boolean;
   onUndo: () => void;
+  sync: SyncInfo;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -147,6 +197,7 @@ export function Navbar({
         <span className="hidden font-mono text-[11px] uppercase tracking-wider text-mut md:block">
           {fmtLong(todayISO())}
         </span>
+        <SyncBadge sync={sync} />
         <button
           onClick={onUndo}
           disabled={!canUndo}
