@@ -12,7 +12,7 @@ import {
 import { useDraggable } from "@dnd-kit/core";
 import type { Chunk, DayConfig, Order } from "../types";
 import { ORDER_COLORS } from "../types";
-import { colDate, fmtNum, orderProgress, pctColor, todayISO } from "../lib";
+import { colDate, fmtNum, loadByDate, orderProgress, pctColor, todayISO } from "../lib";
 import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
 import { Ring, Stepper, inputCls } from "./ui";
 
@@ -203,11 +203,8 @@ export function Sidebar({
   const cfg = dayConfigs[activeDay] ?? DEFAULT_DAY_CONFIG;
   const cap = capacityOf(cfg);
 
-  const assignedByDay = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of chunks) m[c.date] = (m[c.date] ?? 0) + c.units;
-    return m;
-  }, [chunks]);
+  // carga real por día: tarjetas actuales + pasos históricos (trail) de lotes ya avanzados
+  const assignedByDay = useMemo(() => loadByDate(chunks), [chunks]);
 
   const scheduled = useMemo(() => {
     const m: Record<string, number> = {};
@@ -434,8 +431,11 @@ export function Sidebar({
                   {cap.pHora.toLocaleString("es", { maximumFractionDigits: 1 })} uds/h
                 </span>
               </div>
-              <div className="flex items-center justify-between border-t border-line pt-1">
-                <span className="text-mut">Ocupación planeada</span>
+              <div
+                className="flex items-center justify-between border-t border-line pt-1"
+                title="Incluye los lotes trabajados en esta jornada, aunque ya hayan avanzado al día siguiente"
+              >
+                <span className="text-mut">Ocupación del día</span>
                 <span className="font-bold" style={{ color: hex }}>
                   {fmtNum(assignedByDay[activeDay] ?? 0)} / {fmtNum(cap.cap)} · {Math.round(pct)}%
                 </span>

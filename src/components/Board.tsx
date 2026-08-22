@@ -112,7 +112,10 @@ function ColumnHeader({
           {Math.round(pct)}%
         </span>
       </div>
-      <div className="mt-1 flex items-center justify-between font-mono text-[9.5px] tabular text-faint">
+      <div
+        className="mt-1 flex items-center justify-between font-mono text-[9.5px] tabular text-faint"
+        title="Incluye los lotes trabajados en esta jornada, aunque ya hayan avanzado al día siguiente"
+      >
         <span>
           {fmtNum(assigned)} / {fmtNum(cap.cap)} uds
         </span>

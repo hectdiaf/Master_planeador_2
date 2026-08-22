@@ -158,3 +158,22 @@ export function orderProgress(totalUnits: number, doneUnits: number): number {
   if (totalUnits <= 0) return 0;
   return Math.min(100, Math.round((doneUnits / totalUnits) * 100));
 }
+
+/* ── ocupación por día: cuenta el trabajo real de cada jornada ── */
+
+/**
+ * Carga de unidades por día. Incluye tanto las tarjetas presentes en la jornada
+ * como los pasos históricos (trail) de lotes que ya avanzaron al día siguiente:
+ * la ocupación de un día no baja cuando su lote pasa al siguiente proceso.
+ */
+export function loadByDate(chunks: Chunk[]): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const c of chunks) {
+    m[c.date] = (m[c.date] ?? 0) + c.units;
+    for (const t of c.trail ?? []) {
+      // evita doble conteo si el lote fue devuelto manualmente a un día ya recorrido
+      if (t.date !== c.date) m[t.date] = (m[t.date] ?? 0) + t.units;
+    }
+  }
+  return m;
+}

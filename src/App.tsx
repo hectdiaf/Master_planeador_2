@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import type { Chunk, Filters, Order } from "./types";
 import { STATUS_META, uid } from "./types";
-import { buildWindow, fmtMedium, fmtNum, fmtRange, nextBiz, prevBiz, todayISO } from "./lib";
+import { buildWindow, fmtMedium, fmtNum, fmtRange, loadByDate, nextBiz, prevBiz, todayISO } from "./lib";
 import {
   DEFAULT_DAY_CONFIG,
   NEXT_STEP,
@@ -128,12 +128,8 @@ export default function App() {
     [statusChunks, visibleIds]
   );
 
-  // ocupación real por día (independiente de filtros) para la barra de capacidad
-  const assignedByDate = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of chunks) m[c.date] = (m[c.date] ?? 0) + c.units;
-    return m;
-  }, [chunks]);
+  // carga real por día (independiente de filtros): tarjetas actuales + lotes ya avanzados
+  const assignedByDate = useMemo(() => loadByDate(chunks), [chunks]);
 
   // Avanzar flujo: el mismo lote pasa al siguiente proceso, al siguiente día hábil.
   const handleAdvance = useCallback(
