@@ -14,7 +14,7 @@ import {
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Chunk, ChunkStatus, DayConfig, Order } from "../types";
 import { FLOW_LABELS, ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
-import { colDate, fmtNum, nextBiz, pctColor } from "../lib";
+import { colDate, fmtMedium, fmtNum, nextBiz, pctColor } from "../lib";
 import { DEFAULT_DAY_CONFIG, NEXT_STEP, capacityOf, type PlannerApi } from "../store";
 import { Badge, Stepper } from "./ui";
 
@@ -171,6 +171,15 @@ function CardPill({
     ? `${STATUS_META[nextStatus].short} · ${ac.dow} ${ac.dnum}`
     : "";
 
+  // Recorrido del lote: historial de días/procesos anteriores.
+  const trail = chunk.trail ?? [];
+  const journey = trail.length
+    ? trail
+        .map((t) => `${fmtMedium(t.date)} · ${STATUS_META[t.status].short}`)
+        .join(" → ") +
+      ` → hoy: ${fmtMedium(chunk.date)} · ${STATUS_META[chunk.status].short}`
+    : "";
+
   // Popover en capa fija (por encima de todas las tarjetas/columnas, sin recortes).
   const togglePop = () => {
     if (popOpen) {
@@ -207,11 +216,21 @@ function CardPill({
       style={{ borderLeft: `3px solid ${accent}` }}
     >
       <div className="flex items-start justify-between gap-1">
-        <span
-          className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.14em]"
-          style={{ color: accent }}
-        >
-          {order.code}
+        <span className="flex min-w-0 items-center gap-1">
+          <span
+            className="truncate font-mono text-[8.5px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: accent }}
+          >
+            {order.code}
+          </span>
+          {trail.length > 0 && (
+            <span
+              title={`Recorrido del lote: ${journey}`}
+              className="shrink-0 cursor-help rounded-full border border-accent/45 bg-accent/[0.12] px-1 py-[0.5px] font-mono text-[8px] font-bold leading-none text-accent"
+            >
+              D{trail.length + 1}
+            </span>
+          )}
         </span>
         <button
           onClick={(e) => {
@@ -425,6 +444,9 @@ export function Board({
             return (oa?.code ?? "").localeCompare(ob?.code ?? "");
           });
 
+        // Lotes que pasaron por este día y ya avanzaron: se conserva su historial.
+        const movedOut = chunks.filter((c) => (c.trail ?? []).some((t) => t.date === date));
+
         return (
           <DayColumn key={date} date={date} isToday={date === today}>
             <ColumnHeader
@@ -466,6 +488,35 @@ export function Board({
                     />
                   );
                 })
+              )}
+
+              {movedOut.length > 0 && (
+                <div className="mt-auto flex flex-col gap-1.5 border-t border-dashed border-line/80 pt-1.5">
+                  {movedOut.map((c) => {
+                    const t = (c.trail ?? []).find((x) => x.date === date)!;
+                    const idx = (c.trail ?? []).indexOf(t);
+                    const dest = (c.trail ?? [])[idx + 1]?.date ?? c.date;
+                    const o = ordersById.get(c.orderId);
+                    return (
+                      <button
+                        key={`ghost-${c.id}`}
+                        onClick={() => o && onCardClick(o.id)}
+                        title={`${o?.code ?? ""} · ${fmtNum(t.units)} uds en ${STATUS_META[t.status].label} → avanzó a ${fmtMedium(dest)}`}
+                        className="flex items-center gap-1.5 rounded-lg border border-dashed border-line px-2 py-1.5 text-left opacity-75 transition hover:border-line2 hover:bg-raise/60 hover:opacity-100"
+                      >
+                        <MoveRight size={11} className="shrink-0 text-faint" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-mono text-[9.5px] font-semibold tabular text-mut">
+                            {o?.code} · {fmtNum(t.units)} uds · {STATUS_META[t.status].short}
+                          </span>
+                          <span className="block text-[9px] text-faint">
+                            avanzó → {fmtMedium(dest)}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </DayColumn>

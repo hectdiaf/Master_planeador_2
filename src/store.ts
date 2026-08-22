@@ -128,7 +128,13 @@ function loadState(): PlannerState {
         Array.isArray(parsed.chunks) &&
         !!parsed.dayConfigs &&
         parsed.chunks.every((c) => typeof c.status === "string");
-      if (valid) return parsed;
+      if (valid)
+        return {
+          ...parsed,
+          chunks: parsed.chunks.map((c) =>
+            Array.isArray(c.trail) ? c : { ...c, trail: [] }
+          ),
+        };
     }
   } catch {
     /* datos corruptos o de una versión previa: re-sembrar */
@@ -278,6 +284,7 @@ export function usePlanner(): PlannerState & {
             date,
             units,
             status: "revision",
+            trail: [],
             createdAt: new Date().toISOString(),
           };
           return {
@@ -406,6 +413,7 @@ export function usePlanner(): PlannerState & {
             prevStatus: c.prevStatus,
             blockReason: c.blockReason,
             blockedAt: c.blockedAt,
+            trail: [...(c.trail ?? [])],
             createdAt: new Date().toISOString(),
           }));
           const next = {
@@ -435,16 +443,26 @@ export function usePlanner(): PlannerState & {
           const nextStatus = c ? NEXT_STEP[c.status] : undefined;
           if (!c || !nextStatus) return s;
           const date = nextBiz(c.date);
+          const step = {
+            date: c.date,
+            status: c.status,
+            units: c.units,
+            at: new Date().toISOString(),
+          };
           const next = {
             ...s,
             chunks: s.chunks.map((x) =>
-              x.id === chunkId ? { ...x, status: nextStatus, date } : x
+              x.id === chunkId
+                ? { ...x, trail: [...(x.trail ?? []), step], status: nextStatus, date }
+                : x
             ),
           };
           return patchOrder(next, c.orderId, (o) =>
             withLog(
               o,
-              `Lote de ${c.units} uds avanzado → ${STATUS_META[nextStatus].label} · ${fmtMedium(date)}.`
+              `Lote de ${c.units} uds: ${STATUS_META[c.status].label} (${fmtMedium(c.date)}) → ${
+                STATUS_META[nextStatus].label
+              } (${fmtMedium(date)}).`
             )
           );
         });

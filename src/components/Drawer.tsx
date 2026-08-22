@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { AlertTriangle, CalendarDays, Pencil, Send, Unlock, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  History as HistoryIcon,
+  Pencil,
+  Send,
+  Unlock,
+  X,
+} from "lucide-react";
 import type { Chunk, ChunkStatus, Order } from "../types";
 import { ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
 import { fmtDateTime, fmtMedium, fmtNum, orderDoneUnits, orderProgress } from "../lib";
@@ -236,18 +244,31 @@ export function Drawer({
               {chunks.map((c) => (
                 <div
                   key={c.id}
-                  className="flex items-center gap-2 rounded-md border border-line bg-raise/40 px-2 py-1.5"
+                  className="rounded-md border border-line bg-raise/40 px-2 py-1.5"
                 >
-                  <span className="flex items-center gap-1 font-mono text-[11px] tabular text-mut">
-                    <CalendarDays size={11} />
-                    {fmtMedium(c.date)}
-                  </span>
-                  <span className="font-mono text-[11.5px] font-bold tabular">
-                    {fmtNum(c.units)} uds
-                  </span>
-                  <span className="ml-auto">
-                    <Badge status={c.status} size="sm" />
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 font-mono text-[11px] tabular text-mut">
+                      <CalendarDays size={11} />
+                      {fmtMedium(c.date)}
+                    </span>
+                    <span className="font-mono text-[11.5px] font-bold tabular">
+                      {fmtNum(c.units)} uds
+                    </span>
+                    <span className="ml-auto">
+                      <Badge status={c.status} size="sm" />
+                    </span>
+                  </div>
+                  {(c.trail ?? []).length > 0 && (
+                    <p className="mt-1 flex items-center gap-1 border-t border-line/60 pt-1 font-mono text-[9.5px] tabular text-faint">
+                      <HistoryIcon size={10} className="shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {c.trail
+                          .map((t) => `${fmtMedium(t.date)} · ${STATUS_META[t.status].short}`)
+                          .join(" → ")}{" "}
+                        → aquí
+                      </span>
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

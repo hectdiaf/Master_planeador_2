@@ -52,6 +52,7 @@ const C = (
   date,
   units,
   status,
+  trail: [],
   createdAt: now,
   ...extra,
 });

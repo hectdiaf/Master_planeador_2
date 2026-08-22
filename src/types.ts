@@ -48,6 +48,14 @@ export interface Order {
   updatedAt: string;
 }
 
+/** Paso histórico del lote: día y proceso por los que ya pasó. */
+export interface TrailStep {
+  date: string;
+  status: ChunkStatus;
+  units: number;
+  at: string; // ISO datetime del avance
+}
+
 /** Tarjeta / asignación del calendario — el estado vive aquí, no en el pedido. */
 export interface Chunk {
   id: string;
@@ -58,6 +66,8 @@ export interface Chunk {
   prevStatus?: ChunkStatus;
   blockReason?: string;
   blockedAt?: string;
+  /** Recorrido del lote: procesos de días anteriores (historial del flujo). */
+  trail: TrailStep[];
   createdAt: string;
 }
 
