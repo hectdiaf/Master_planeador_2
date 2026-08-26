@@ -268,6 +268,30 @@ export function usePlanner(): PlannerState & {
       return patchOrder(next, c.orderId, (o) => withLog(o, log(c)));
     };
 
+    /** Despacho es terminal: finalizar una tarjeta finaliza todo su pedido. */
+    const finalizeOrderChunks = (s: PlannerState, c: Chunk): PlannerState => {
+      const next = {
+        ...s,
+        chunks: s.chunks.map((x) =>
+          x.orderId === c.orderId
+            ? {
+                ...x,
+                status: "despacho" as ChunkStatus,
+                prevStatus: undefined,
+                blockReason: undefined,
+                blockedAt: undefined,
+              }
+            : x
+        ),
+      };
+      return patchOrder(next, c.orderId, (o) =>
+        withLog(
+          { ...o, archived: true },
+          `Pedido finalizado desde la tarjeta del ${fmtMedium(c.date)} (${c.units} uds): todas sus tarjetas quedan despachadas.`
+        )
+      );
+    };
+
     return {
       updateOrder(id, patch, logText) {
         setState((s) =>
@@ -355,24 +379,29 @@ export function usePlanner(): PlannerState & {
       },
 
       setChunkStatus(chunkId, status) {
-        setState((s) =>
-          chunkAction(
+        setState((s) => {
+          const c = s.chunks.find((x) => x.id === chunkId);
+          if (!c) return s;
+          const order = s.orders.find((o) => o.id === c.orderId);
+          if (status === "despacho") return finalizeOrderChunks(s, c);
+          if (order?.archived) return s;
+          return chunkAction(
             s,
             chunkId,
-            (c) =>
-              c.status === status
-                ? c
+            (x) =>
+              x.status === status
+                ? x
                 : {
-                    ...c,
+                    ...x,
                     status,
                     prevStatus: undefined,
                     blockReason: undefined,
                     blockedAt: undefined,
                   },
-            (c) =>
-              `Tarjeta del ${fmtMedium(c.date)} (${c.units} uds) → ${STATUS_META[status].label}.`
-          )
-        );
+            (x) =>
+              `Tarjeta del ${fmtMedium(x.date)} (${x.units} uds) → ${STATUS_META[status].label}.`
+          );
+        });
       },
 
       blockChunk(chunkId, reason) {
@@ -416,23 +445,7 @@ export function usePlanner(): PlannerState & {
         setState((s) => {
           const c = s.chunks.find((x) => x.id === chunkId);
           if (!c) return s;
-          const next = patchChunk(s, chunkId, (x) => ({
-            ...x,
-            status: "despacho",
-            prevStatus: undefined,
-            blockReason: undefined,
-            blockedAt: undefined,
-          }));
-          const siblings = next.chunks.filter((x) => x.orderId === c.orderId);
-          const allDone = siblings.every((x) => x.status === "despacho");
-          return patchOrder(next, c.orderId, (o) =>
-            withLog(
-              allDone ? { ...o, archived: true } : o,
-              allDone
-                ? `Tarjeta del ${fmtMedium(c.date)} despachada (${c.units} uds). Pedido finalizado — sale del backlog.`
-                : `Tarjeta del ${fmtMedium(c.date)} despachada (${c.units} uds).`
-            )
-          );
+          return finalizeOrderChunks(s, c);
         });
       },
 

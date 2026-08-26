@@ -45,7 +45,7 @@ export function Drawer({
   const assigned = chunks.reduce((a, c) => a + c.units, 0);
   const blockedChunks = chunks.filter((c) => c.status === "bloqueado");
   const doneUnits = orderDoneUnits(chunks);
-  const progress = orderProgress(order.totalUnits, doneUnits);
+  const progress = orderProgress(order.totalUnits, doneUnits, order.archived);
 
   const byStatus = (s: ChunkStatus) =>
     chunks.filter((c) => c.status === s).reduce((a, c) => a + c.units, 0);
@@ -224,7 +224,7 @@ export function Drawer({
               </span>
             </div>
             <p className="mt-1.5 text-[10px] leading-snug text-faint">
-              Cálculo automático: (uds en QA + uds en Empaque) ÷ unidades totales ×
+              Cálculo automático: (uds en QA + uds en Empaque + uds en Despacho) ÷ unidades totales ×
               100 — se actualiza al cambiar el estado de las tarjetas.
             </p>
           </div>

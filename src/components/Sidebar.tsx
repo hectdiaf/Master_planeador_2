@@ -43,7 +43,7 @@ function BacklogCard({
   const [armed, setArmed] = useState(false);
   const accent = ORDER_COLORS[o.color];
   const remaining = Math.max(0, o.totalUnits - sched);
-  const progress = orderProgress(o.totalUnits, doneUnits);
+  const progress = orderProgress(o.totalUnits, doneUnits, o.archived);
 
   return (
     <div
@@ -68,7 +68,7 @@ function BacklogCard({
             {o.code} · {o.channel}
           </p>
         </div>
-        <div className="flex flex-col items-center gap-[2px]" title={`Avance = (QA + Empaque) ÷ totales (${fmtNum(doneUnits)}/${fmtNum(o.totalUnits)})`}>
+        <div className="flex flex-col items-center gap-[2px]" title={`Avance = (QA + Empaque + Despacho) ÷ totales (${fmtNum(doneUnits)}/${fmtNum(o.totalUnits)})`}>
           <Ring value={progress} size={34} color={accent} />
           <span className="font-mono text-[8px] uppercase tracking-wider text-faint">Avance</span>
         </div>
@@ -215,7 +215,7 @@ export function Sidebar({
   const doneByOrder = useMemo(() => {
     const m: Record<string, number> = {};
     for (const c of chunks)
-      if (c.status === "qa" || c.status === "empaque")
+      if (c.status === "qa" || c.status === "empaque" || c.status === "despacho")
         m[c.orderId] = (m[c.orderId] ?? 0) + c.units;
     return m;
   }, [chunks]);

@@ -145,16 +145,20 @@ export function pctColor(p: number): "ok" | "warn" | "danger" {
 
 /* ── avance del pedido: se deriva de las tarjetas en QA y Empaque ── */
 
-/** Unidades ya validadas: en Control de Calidad o en su proceso posterior (Empaque). */
+/** Unidades avanzadas: en Control de Calidad o en sus procesos posteriores. */
 export function orderDoneUnits(chunks: Chunk[]): number {
   return chunks.reduce(
-    (a, c) => (c.status === "qa" || c.status === "empaque" ? a + c.units : a),
+    (a, c) =>
+      c.status === "qa" || c.status === "empaque" || c.status === "despacho"
+        ? a + c.units
+        : a,
     0
   );
 }
 
-/** Avance general (%) = (uds en QA + uds en Empaque) ÷ unidades totales × 100. */
-export function orderProgress(totalUnits: number, doneUnits: number): number {
+/** Avance general (%) = (uds en QA + Empaque + Despacho) ÷ unidades totales × 100. */
+export function orderProgress(totalUnits: number, doneUnits: number, finalized = false): number {
+  if (finalized) return 100;
   if (totalUnits <= 0) return 0;
   return Math.min(100, Math.round((doneUnits / totalUnits) * 100));
 }
