@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Ban,
   Check,
+  MessageCircle,
   MoveRight,
   Pencil,
   Scissors,
@@ -14,7 +15,7 @@ import {
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { Chunk, ChunkStatus, DayConfig, Order } from "../types";
 import { FLOW_LABELS, ORDER_COLORS, STATUS_FLOW, STATUS_META } from "../types";
-import { colDate, fmtMedium, fmtNum, nextBiz, pctColor } from "../lib";
+import { colDate, fmtMedium, fmtNum, nextBiz, pctColor, type DailyCapacityLoad } from "../lib";
 import { DEFAULT_DAY_CONFIG, NEXT_STEP, capacityOf, type PlannerApi } from "../store";
 import { Badge, Stepper } from "./ui";
 
@@ -51,20 +52,25 @@ function ColumnHeader({
 }: {
   date: string;
   isToday: boolean;
-  assigned: number;
+  assigned: { tech: number; qa: number };
   cfg: DayConfig;
   onGear: () => void;
 }) {
   const c = colDate(date);
   const cap = capacityOf(cfg);
-  const pct = cap.cap > 0 ? (assigned / cap.cap) * 100 : 0;
-  const tone = pctColor(pct);
-  const hex =
-    tone === "danger"
-      ? "var(--sf-danger)"
-      : tone === "warn"
-        ? "var(--sf-warn)"
-        : "var(--sf-ok)";
+  const indicator = (load: number, available: number) => {
+    const pct = available > 0 ? (load / available) * 100 : 0;
+    const tone = pctColor(pct);
+    const hex =
+      tone === "danger"
+        ? "var(--sf-danger)"
+        : tone === "warn"
+          ? "var(--sf-warn)"
+          : "var(--sf-ok)";
+    return { pct, hex };
+  };
+  const tech = indicator(assigned.tech, cap.techCap);
+  const qa = indicator(assigned.qa, cap.qaCap);
 
   return (
     <div className="border-b border-line/70 px-2.5 pb-2 pt-2">
@@ -98,34 +104,24 @@ function ColumnHeader({
         </div>
       </div>
 
-      <div className="mt-1.5 flex items-center gap-1.5">
-        <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-paper">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${Math.min(100, pct)}%`, background: hex }}
-          />
+      {[
+        { label: "Téc.", load: assigned.tech, available: cap.techCap, ...tech },
+        { label: "QA", load: assigned.qa, available: cap.qaCap, ...qa },
+      ].map((item) => (
+        <div key={item.label} className="mt-1.5" title="Incluye los lotes trabajados en esta jornada, aunque ya hayan avanzado al día siguiente">
+          <div className="flex items-center gap-1.5">
+            <span className="w-7 font-mono text-[9.5px] font-bold text-faint">{item.label}</span>
+            <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-paper">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, item.pct)}%`, background: item.hex }} />
+            </div>
+            <span className="font-mono text-[10.5px] font-bold tabular" style={{ color: item.hex }}>{Math.round(item.pct)}%</span>
+          </div>
+          <div className="ml-7 mt-0.5 flex justify-between font-mono text-[9.5px] tabular text-faint">
+            <span>{fmtNum(item.load)} / {fmtNum(item.available)} uds</span>
+            {item.pct > 100 && <span className="flex items-center gap-0.5 font-bold text-danger"><AlertTriangle size={9} /> Sobrecarga</span>}
+          </div>
         </div>
-        <span
-          className="font-mono text-[10.5px] font-bold tabular"
-          style={{ color: hex }}
-        >
-          {Math.round(pct)}%
-        </span>
-      </div>
-      <div
-        className="mt-1 flex items-center justify-between font-mono text-[9.5px] tabular text-faint"
-        title="Incluye los lotes trabajados en esta jornada, aunque ya hayan avanzado al día siguiente"
-      >
-        <span>
-          {fmtNum(assigned)} / {fmtNum(cap.cap)} uds
-        </span>
-        {pct > 100 && (
-          <span className="flex items-center gap-0.5 font-bold text-danger">
-            <AlertTriangle size={9} />
-            Sobrecarga
-          </span>
-        )}
-      </div>
+      ))}
     </div>
   );
 }
@@ -165,6 +161,9 @@ function CardPill({
   const accent = ORDER_COLORS[order.color];
   const blocked = chunk.status === "bloqueado";
   const done = chunk.status === "despacho";
+  const unreadManualNotes = order.logs.filter(
+    (log) => !log.auto && (!order.manualNotesReadAt || log.at > order.manualNotesReadAt)
+  ).length;
 
   // Siguiente paso del flujo: mismas unidades, siguiente proceso, siguiente día hábil.
   const nextStatus = NEXT_STEP[chunk.status];
@@ -226,14 +225,22 @@ function CardPill({
           >
             {order.code}
           </span>
-          {trail.length > 0 && (
+           {trail.length > 0 && (
             <span
               title={`Recorrido del lote: ${journey}`}
               className="shrink-0 cursor-help rounded-full border border-accent/45 bg-accent/[0.12] px-1 py-[0.5px] font-mono text-[8px] font-bold leading-none text-accent"
             >
               D{trail.length + 1}
             </span>
-          )}
+           )}
+           {unreadManualNotes > 0 && (
+             <span
+               title={`${unreadManualNotes} nota${unreadManualNotes > 1 ? "s" : ""} manual${unreadManualNotes > 1 ? "es" : ""} nueva${unreadManualNotes > 1 ? "s" : ""}`}
+               className="flex shrink-0 items-center gap-0.5 rounded-full bg-accent px-1 py-[0.5px] font-mono text-[8px] font-bold leading-none text-white"
+             >
+               <MessageCircle size={9} /> {unreadManualNotes}
+             </span>
+           )}
         </span>
         <button
           onClick={(e) => {
@@ -421,7 +428,7 @@ export function Board({
   chunks: Chunk[];
   ordersById: Map<string, Order>;
   dayConfigs: Record<string, DayConfig>;
-  assigned: Record<string, number>;
+  assigned: DailyCapacityLoad;
   today: string;
   api: PlannerApi;
   notify: (t: string, tone?: "ok" | "warn" | "danger") => void;
@@ -455,7 +462,7 @@ export function Board({
             <ColumnHeader
               date={date}
               isToday={date === today}
-              assigned={assigned[date] ?? 0}
+              assigned={{ tech: assigned.tech[date] ?? 0, qa: assigned.qa[date] ?? 0 }}
               cfg={dayConfigs[date] ?? DEFAULT_DAY_CONFIG}
               onGear={() => onGear(date)}
             />

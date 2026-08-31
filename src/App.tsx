@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import type { Chunk, Filters, Order } from "./types";
 import { STATUS_META, uid } from "./types";
-import { buildWindow, fmtMedium, fmtNum, fmtRange, loadByDate, nextBiz, prevBiz, todayISO } from "./lib";
+import { buildWindow, capacityAreaForStatus, capacityLoadByDate, fmtMedium, fmtNum, fmtRange, nextBiz, prevBiz, todayISO } from "./lib";
 import {
   DEFAULT_DAY_CONFIG,
   NEXT_STEP,
@@ -128,8 +128,8 @@ export default function App() {
     [statusChunks, visibleIds]
   );
 
-  // carga real por día (independiente de filtros): tarjetas actuales + lotes ya avanzados
-  const assignedByDate = useMemo(() => loadByDate(chunks), [chunks]);
+  // Carga real por día y equipo (independiente de filtros).
+  const assignedByDate = useMemo(() => capacityLoadByDate(chunks), [chunks]);
 
   // Avanzar flujo: el mismo lote pasa al siguiente proceso, al siguiente día hábil.
   const handleAdvance = useCallback(
@@ -138,13 +138,15 @@ export default function App() {
       const next = c ? NEXT_STEP[c.status] : undefined;
       if (!c || !next) return;
       const date = nextBiz(c.date);
-      const cap = capacityOf(dayConfigs[date] ?? DEFAULT_DAY_CONFIG).cap;
-      const load = (assignedByDate[date] ?? 0) + c.units;
+      const capacity = capacityOf(dayConfigs[date] ?? DEFAULT_DAY_CONFIG);
+      const area = capacityAreaForStatus(next);
+      const cap = area === "tech" ? capacity.techCap : capacity.qaCap;
+      const load = area ? (assignedByDate[area][date] ?? 0) + c.units : 0;
       const pct = cap > 0 ? Math.round((load / cap) * 100) : 0;
       api.advanceChunk(chunkId);
       notify(
         `${fmtNum(c.units)} uds → ${STATUS_META[next].label} · ${fmtMedium(date)}${
-          pct > 100 ? ` (día al ${pct}% de capacidad)` : ""
+          area && pct > 100 ? ` (${area === "tech" ? "Técnicos" : "QA"} al ${pct}% de capacidad)` : ""
         }`,
         pct > 100 ? "warn" : "ok"
       );
@@ -425,9 +427,9 @@ export default function App() {
           date={modal.date}
           presetOrderId={modal.orderId}
           onClose={() => setModal(null)}
-          onConfirm={(orderId, units) => {
-            api.assign(orderId, modal.date, units);
-            notify(`${units} uds asignadas al plan.`);
+          onConfirm={(orderId, units, initialStatus) => {
+            api.assign(orderId, modal.date, units, initialStatus);
+            notify(`${units} uds asignadas a ${STATUS_META[initialStatus].label}.`);
             setModal(null);
           }}
         />

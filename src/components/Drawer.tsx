@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -46,6 +46,10 @@ export function Drawer({
   const blockedChunks = chunks.filter((c) => c.status === "bloqueado");
   const doneUnits = orderDoneUnits(chunks);
   const progress = orderProgress(order.totalUnits, doneUnits, order.archived);
+
+  useEffect(() => {
+    api.markNotesRead(order.id);
+  }, [api, order.id]);
 
   const byStatus = (s: ChunkStatus) =>
     chunks.filter((c) => c.status === s).reduce((a, c) => a + c.units, 0);

@@ -1,4 +1,4 @@
-import type { Chunk } from "./types";
+import type { Chunk, ChunkStatus } from "./types";
 
 export const WEEKDAYS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 export const WEEKDAYS_LONG = [
@@ -180,4 +180,39 @@ export function loadByDate(chunks: Chunk[]): Record<string, number> {
     }
   }
   return m;
+}
+
+export interface DailyCapacityLoad {
+  tech: Record<string, number>;
+  qa: Record<string, number>;
+}
+
+/**
+ * Clasificación de carga por proceso. El modelo actual no tiene un estado de
+ * "alistamiento" separado; `qa` representa QA y limpieza y consume QA.
+ */
+export function capacityAreaForStatus(status: ChunkStatus): "tech" | "qa" | null {
+  if (status === "reacondicionamiento") return "tech";
+  if (status === "revision" || status === "qa" || status === "empaque") return "qa";
+  return null;
+}
+
+/**
+ * Carga diaria separada por equipo. Conserva los pasos históricos para que
+ * una jornada no pierda carga cuando un lote avanza al día siguiente.
+ */
+export function capacityLoadByDate(chunks: Chunk[]): DailyCapacityLoad {
+  const loads: DailyCapacityLoad = { tech: {}, qa: {} };
+  const add = (date: string, units: number, status: ChunkStatus | undefined) => {
+    if (!status) return;
+    const area = capacityAreaForStatus(status);
+    if (area) loads[area][date] = (loads[area][date] ?? 0) + units;
+  };
+
+  for (const c of chunks) {
+    // Una tarjeta bloqueada conserva la etapa que tenía antes del bloqueo.
+    add(c.date, c.units, c.status === "bloqueado" ? c.prevStatus : c.status);
+    for (const t of c.trail ?? []) add(t.date, t.units, t.status);
+  }
+  return loads;
 }

@@ -44,6 +44,8 @@ export interface Order {
   deliveryDate: string; // ISO date
   archived?: boolean; // todas sus tarjetas despachadas: sale del backlog, sigue en calendario
   logs: LogEntry[];
+  /** Última nota manual que ya fue consultada en la bitácora. */
+  manualNotesReadAt?: string;
   createdAt: string;
   updatedAt: string;
 }

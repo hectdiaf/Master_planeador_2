@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, PackagePlus, Plus, Trash2 } from "lucide-react";
-import type { Chunk, Order } from "../types";
-import { BLOCK_REASONS, CHANNELS, clamp } from "../types";
+import type { Chunk, ChunkStatus, Order } from "../types";
+import { BLOCK_REASONS, CHANNELS, FLOW_LABELS, clamp } from "../types";
 import {
   businessDaysFrom,
   colDate,
@@ -17,6 +17,8 @@ interface ProductRow {
   name: string;
   qty: number;
 }
+
+const INITIAL_STAGES: ChunkStatus[] = ["revision", "reacondicionamiento", "qa", "empaque"];
 
 /* ── Nuevo pedido / edición (multi-producto) ────────────────────── */
 
@@ -448,7 +450,7 @@ export function AssignModal({
   date: string;
   presetOrderId?: string;
   onClose: () => void;
-  onConfirm: (orderId: string, units: number) => void;
+  onConfirm: (orderId: string, units: number, initialStatus: ChunkStatus) => void;
 }) {
   const remaining = (orderId: string) => {
     const o = orders.find((x) => x.id === orderId);
@@ -469,6 +471,7 @@ export function AssignModal({
       : (candidates[0]?.id ?? "");
   const [orderId, setOrderId] = useState(initialId);
   const [units, setUnits] = useState(() => Math.max(1, remaining(initialId)));
+  const [initialStatus, setInitialStatus] = useState<ChunkStatus>("revision");
 
   const c = colDate(date);
   const sel = candidates.find((o) => o.id === orderId);
@@ -478,7 +481,7 @@ export function AssignModal({
   return (
     <Modal
       title="Asignar unidades"
-      subtitle={`${c.dowLong} ${c.dnum} ${c.mon} · la tarjeta entrará en Primera Revisión`}
+      subtitle={`${c.dowLong} ${c.dnum} ${c.mon} · define la etapa con la que inicia la tarjeta`}
       onClose={onClose}
       width={430}
     >
@@ -516,12 +519,20 @@ export function AssignModal({
               </span>
             )}
           </div>
+          <div>
+            <span className={labelCls}>Etapa inicial</span>
+            <select value={initialStatus} onChange={(e) => setInitialStatus(e.target.value as ChunkStatus)} className={inputCls}>
+              {INITIAL_STAGES.map((stage) => (
+                <option key={stage} value={stage}>{FLOW_LABELS[stage]}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className={btnGhost}>
               Cancelar
             </button>
             <button
-              onClick={() => ok && onConfirm(orderId, units)}
+              onClick={() => ok && onConfirm(orderId, units, initialStatus)}
               disabled={!ok}
               className={btnPrimary + " disabled:opacity-40"}
             >

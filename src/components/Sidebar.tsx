@@ -12,7 +12,7 @@ import {
 import { useDraggable } from "@dnd-kit/core";
 import type { Chunk, DayConfig, Order } from "../types";
 import { ORDER_COLORS } from "../types";
-import { colDate, fmtNum, loadByDate, orderProgress, pctColor, todayISO } from "../lib";
+import { capacityLoadByDate, colDate, fmtNum, orderProgress, pctColor, todayISO } from "../lib";
 import { DEFAULT_DAY_CONFIG, capacityOf, type PlannerApi } from "../store";
 import { Ring, Stepper, inputCls } from "./ui";
 
@@ -203,8 +203,8 @@ export function Sidebar({
   const cfg = dayConfigs[activeDay] ?? DEFAULT_DAY_CONFIG;
   const cap = capacityOf(cfg);
 
-  // carga real por día: tarjetas actuales + pasos históricos (trail) de lotes ya avanzados
-  const assignedByDay = useMemo(() => loadByDate(chunks), [chunks]);
+  // Carga real por día y por equipo: tarjetas actuales + pasos históricos.
+  const assignedByDay = useMemo(() => capacityLoadByDate(chunks), [chunks]);
 
   const scheduled = useMemo(() => {
     const m: Record<string, number> = {};
@@ -232,10 +232,16 @@ export function Sidebar({
     return showFinalized ? [...act, ...finalized] : act;
   }, [active, finalized, scheduled, showFinalized]);
 
-  const pct = cap.cap > 0 ? ((assignedByDay[activeDay] ?? 0) / cap.cap) * 100 : 0;
-  const tone = pctColor(pct);
-  const hex =
-    tone === "danger" ? "var(--sf-danger)" : tone === "warn" ? "var(--sf-warn)" : "var(--sf-ok)";
+  const capacityPct = (load: number, available: number) =>
+    available > 0 ? (load / available) * 100 : 0;
+  const capacityColor = (pct: number) => {
+    const tone = pctColor(pct);
+    return tone === "danger" ? "var(--sf-danger)" : tone === "warn" ? "var(--sf-warn)" : "var(--sf-ok)";
+  };
+  const techLoad = assignedByDay.tech[activeDay] ?? 0;
+  const qaLoad = assignedByDay.qa[activeDay] ?? 0;
+  const techPct = capacityPct(techLoad, cap.techCap);
+  const qaPct = capacityPct(qaLoad, cap.qaCap);
 
   const tabBtn = (t: Tab, icon: React.ReactNode, label: string) => (
     <button
@@ -329,10 +335,8 @@ export function Sidebar({
             {dates.map((d) => {
               const c = colDate(d);
               const p = capacityOf(dayConfigs[d] ?? DEFAULT_DAY_CONFIG);
-              const dp = p.cap > 0 ? ((assignedByDay[d] ?? 0) / p.cap) * 100 : 0;
-              const dt = pctColor(dp);
-              const dhex =
-                dt === "danger" ? "var(--sf-danger)" : dt === "warn" ? "var(--sf-warn)" : "var(--sf-ok)";
+              const techDp = capacityPct(assignedByDay.tech[d] ?? 0, p.techCap);
+              const qaDp = capacityPct(assignedByDay.qa[d] ?? 0, p.qaCap);
               const sel = d === activeDay;
               return (
                 <button
@@ -348,8 +352,9 @@ export function Sidebar({
                   <span className="font-display text-[16px] font-bold leading-none tabular">
                     {c.dnum}
                   </span>
-                  <span className="mt-1 h-[3px] w-8 overflow-hidden rounded-full bg-paper">
-                    <span className="block h-full rounded-full" style={{ width: `${Math.min(100, dp)}%`, background: dhex }} />
+                  <span className="mt-1 flex w-8 flex-col gap-[2px]">
+                    <span className="h-[3px] overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, techDp)}%`, background: capacityColor(techDp) }} /></span>
+                    <span className="h-[3px] overflow-hidden rounded-full bg-paper"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, qaDp)}%`, background: capacityColor(qaDp) }} /></span>
                   </span>
                 </button>
               );
@@ -431,27 +436,24 @@ export function Sidebar({
                   {cap.pHora.toLocaleString("es", { maximumFractionDigits: 1 })} uds/h
                 </span>
               </div>
-              <div
-                className="flex items-center justify-between border-t border-line pt-1"
-                title="Incluye los lotes trabajados en esta jornada, aunque ya hayan avanzado al día siguiente"
-              >
-                <span className="text-mut">Ocupación del día</span>
-                <span className="font-bold" style={{ color: hex }}>
-                  {fmtNum(assignedByDay[activeDay] ?? 0)} / {fmtNum(cap.cap)} · {Math.round(pct)}%
-                </span>
+              <div className="flex items-center justify-between border-t border-line pt-1" title="Reacondicionamiento únicamente">
+                <span className="text-mut">Capacidad Técnicos</span>
+                <span className="font-bold" style={{ color: capacityColor(techPct) }}>{fmtNum(techLoad)} / {fmtNum(cap.techCap)} · {Math.round(techPct)}%</span>
+              </div>
+              <div className="flex items-center justify-between" title="Primera revisión, QA y limpieza, y Empaque">
+                <span className="text-mut">Capacidad QA</span>
+                <span className="font-bold" style={{ color: capacityColor(qaPct) }}>{fmtNum(qaLoad)} / {fmtNum(cap.qaCap)} · {Math.round(qaPct)}%</span>
               </div>
             </div>
-            <div className="mt-2 h-[7px] overflow-hidden rounded-full bg-paper">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, pct)}%`, background: hex }}
-              />
-            </div>
-            {pct > 100 && (
-              <p className="mt-1.5 text-[10.5px] font-bold text-danger">
-                Sobrecarga: el día supera el 100% de la capacidad instalada.
-              </p>
-            )}
+            {[
+              { label: "Técnicos", pct: techPct },
+              { label: "QA", pct: qaPct },
+            ].map((item) => (
+              <div key={item.label} className="mt-2">
+                <div className="h-[7px] overflow-hidden rounded-full bg-paper"><div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, item.pct)}%`, background: capacityColor(item.pct) }} /></div>
+                {item.pct > 100 && <p className="mt-1 text-[10.5px] font-bold text-danger">Sobrecarga de {item.label}: supera el 100% de su capacidad.</p>}
+              </div>
+            ))}
           </div>
         </div>
       )}

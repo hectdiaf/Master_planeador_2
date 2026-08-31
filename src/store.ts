@@ -101,7 +101,8 @@ export interface PlannerApi {
   addNote(id: string, text: string): void;
   removeOrder(id: string): void;
   createOrder(input: OrderInput): void;
-  assign(orderId: string, date: string, units: number): void;
+  assign(orderId: string, date: string, units: number, initialStatus: ChunkStatus): void;
+  markNotesRead(id: string): void;
   setChunkUnits(chunkId: string, units: number): void;
   setChunkStatus(chunkId: string, status: ChunkStatus): void;
   blockChunk(chunkId: string, reason: string): void;
@@ -137,6 +138,14 @@ function loadState(): PlannerState {
       if (valid)
         return {
           ...parsed,
+          orders: parsed.orders.map((o) => {
+            if (o.manualNotesReadAt) return o;
+            const latestManual = o.logs
+              .filter((l) => !l.auto)
+              .reduce<string | undefined>((latest, l) => (!latest || l.at > latest ? l.at : latest), undefined);
+            // Las notas existentes no deben aparecer como nuevas tras actualizar.
+            return { ...o, manualNotesReadAt: latestManual ?? o.createdAt };
+          }),
           chunks: parsed.chunks.map((c) =>
             Array.isArray(c.trail) ? c : { ...c, trail: [] }
           ),
@@ -316,6 +325,18 @@ export function usePlanner(): PlannerState & {
         );
       },
 
+      markNotesRead(id) {
+        setState((s) =>
+          patchOrder(s, id, (o) => {
+            const latestManual = o.logs
+              .filter((l) => !l.auto)
+              .reduce<string | undefined>((latest, l) => (!latest || l.at > latest ? l.at : latest), undefined);
+            if (!latestManual || (o.manualNotesReadAt && o.manualNotesReadAt >= latestManual)) return o;
+            return { ...o, manualNotesReadAt: latestManual };
+          })
+        );
+      },
+
       removeOrder(id) {
         setState((s) => ({
           ...s,
@@ -340,6 +361,7 @@ export function usePlanner(): PlannerState & {
             totalUnits: items.reduce((a, p) => a + p.qty, 0),
             color: COLOR_KEYS[s.orders.length % COLOR_KEYS.length],
             logs: [{ id: uid(), text: "Pedido creado manualmente.", at: nowIso, auto: true }],
+            manualNotesReadAt: nowIso,
             createdAt: nowIso,
             updatedAt: nowIso,
           };
@@ -347,20 +369,20 @@ export function usePlanner(): PlannerState & {
         });
       },
 
-      assign(orderId, date, units) {
+      assign(orderId, date, units, initialStatus) {
         setState((s) => {
           const chunk: Chunk = {
             id: uid(),
             orderId,
             date,
             units,
-            status: "revision",
+            status: initialStatus,
             trail: [],
             createdAt: new Date().toISOString(),
           };
           return {
             ...patchOrder(s, orderId, (o) =>
-              withLog(o, `${units} uds asignadas al ${fmtMedium(date)} → Primera Revisión.`)
+              withLog(o, `${units} uds asignadas al ${fmtMedium(date)} → ${STATUS_META[initialStatus].label}.`)
             ),
             chunks: [...s.chunks, chunk],
           };
