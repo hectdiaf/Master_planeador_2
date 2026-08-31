@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-paper: var(--sf-paper);
+  --color-panel: var(--sf-panel);
+  --color-raise: var(--sf-raise);
+  --color-sunk: var(--sf-sunk);
+  --color-line: var(--sf-line);
+  --color-line2: var(--sf-line2);
+  --color-ink: var(--sf-ink);
+  --color-mut: var(--sf-mut);
+  --color-faint: var(--sf-faint);
+  --color-accent: var(--sf-accent);
+  --color-accent-soft: var(--sf-accent-soft);
+  --color-ok: var(--sf-ok);
+  --color-warn: var(--sf-warn);
+  --color-danger: var(--sf-danger);
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.05), 0 3px 10px rgb(0 0 0 / 0.05);
+  --shadow-pop: 0 4px 10px rgb(0 0 0 / 0.08), 0 12px 32px rgb(0 0 0 / 0.16);
+
+  --animate-fade-up: fade-up 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-slide-r: slide-r 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-toast: toast-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade: fade 0.22s ease both;
+  --animate-ping-dot: ping-dot 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(9px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.955) translateY(5px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes slide-r {
+    from { opacity: 0; transform: translateX(32px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes ping-dot {
+    0% { box-shadow: 0 0 0 0 rgb(13 148 136 / 0.45); }
+    75%, 100% { box-shadow: 0 0 0 6px rgb(13 148 136 / 0); }
+  }
+}
+
+:root {
+  --sf-paper: #f5f5f3;
+  --sf-panel: #fdfdfc;
+  --sf-raise: #f1f1ec;
+  --sf-sunk: #edece7;
+  --sf-line: #e4e4dc;
+  --sf-line2: #d2d2c8;
+  --sf-ink: #1c1e21;
+  --sf-mut: #68707a;
+  --sf-faint: #9aa1a9;
+  --sf-accent: #0d7d72;
+  --sf-accent-soft: #e2efec;
+  --sf-ok: #188a4c;
+  --sf-warn: #c26e07;
+  --sf-danger: #d3382f;
+}
+
+.dark {
+  --sf-paper: #121212;
+  --sf-panel: #1b1b1d;
+  --sf-raise: #232326;
+  --sf-sunk: #161617;
+  --sf-line: #2b2b2f;
+  --sf-line2: #3c3c42;
+  --sf-ink: #e9eaec;
+  --sf-mut: #9aa1a9;
+  --sf-faint: #666d75;
+  --sf-accent: #2cb9a8;
+  --sf-accent-soft: #17302d;
+  --sf-ok: #3fce7c;
+  --sf-warn: #f0a02c;
+  --sf-danger: #f26058;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--sf-paper);
+  color: var(--sf-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+
+::selection { background: color-mix(in srgb, var(--sf-accent) 28%, transparent); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--sf-line2) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--sf-line2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--sf-faint); background-clip: content-box; border: 2px solid transparent; }
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+input[type="date"] { color-scheme: light; }
+.dark input[type="date"] { color-scheme: dark; }
+
+input[type="range"] { accent-color: var(--sf-accent); }
+
+:focus-visible { outline: 2px solid color-mix(in srgb, var(--sf-accent) 60%, transparent); outline-offset: 1px; }
+
+.tabular { font-variant-numeric: tabular-nums; }
